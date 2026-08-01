@@ -45,7 +45,25 @@ Authorized redirect URI:
 
 Then enable Google provider in Supabase Auth and paste the Google client ID and secret there.
 
-Google OAuth is not enabled yet because the Google OAuth client ID and secret have not been provided.
+Google OAuth is enabled.
+
+Google Cloud project:
+- Name: `Spaces`
+- Project ID: `spaces-504202`
+- OAuth client: `Spaces Supabase Auth`
+- Authorized JavaScript origin: `https://spaces.community`
+- Authorized redirect URI: `https://fnrzqmecumyagcajivsu.supabase.co/auth/v1/callback`
+- Publishing status: `In production`
+
+Google OAuth was tested successfully with `digitalcluster25@gmail.com`.
+
+Branding note:
+- Google Branding app name is set to `Spaces`.
+- Home page is `https://spaces.community`.
+- Privacy policy is `https://spaces.community/privacy`.
+- Terms are `https://spaces.community/terms`.
+- Google still may show the Supabase project URL until brand verification is completed.
+- Supabase also recommends using a custom auth domain, for example `auth.spaces.community`, so OAuth screens do not show the default `fnrzqmecumyagcajivsu.supabase.co` project URL.
 
 ## Provider secrets handoff
 

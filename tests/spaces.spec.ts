@@ -24,4 +24,10 @@ test("auth screens are available", async ({ page }) => {
 
   await page.goto("/account");
   await expect(page.getByRole("heading", { name: "Аккаунт Spaces" })).toBeVisible();
+
+  await page.goto("/privacy");
+  await expect(page.getByRole("heading", { name: "Privacy Policy" })).toBeVisible();
+
+  await page.goto("/terms");
+  await expect(page.getByRole("heading", { name: "Terms of Service" })).toBeVisible();
 });

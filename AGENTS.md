@@ -58,7 +58,10 @@ Supabase status:
 - Local `.env` and production `/opt/spaces/repo/.env` contain frontend Supabase values.
 - Resend SMTP is configured for Supabase Auth emails.
 - Spaces Auth email templates are applied.
-- Google OAuth is not enabled yet because Google OAuth client ID and secret are not available.
+- Google OAuth is enabled and tested with `digitalcluster25@gmail.com`.
+- Google Cloud project for OAuth is `spaces-504202`.
+- Google app is published to production.
+- Google branding is set to `Spaces`, but the consent screen can still show the Supabase project URL until Google brand verification and/or Supabase custom auth domain are completed.
 - Required setup details are documented in `docs/supabase-setup.md`.
 
 Autodeploy:

@@ -50,6 +50,10 @@ function App() {
         <AccountPage />
       ) : path === "/reset-password" ? (
         <ResetPasswordPage />
+      ) : path === "/privacy" ? (
+        <LegalPage type="privacy" />
+      ) : path === "/terms" ? (
+        <LegalPage type="terms" />
       ) : authMode ? (
         <AuthPage mode={authMode} />
       ) : (
@@ -493,6 +497,67 @@ function ResetPasswordPage() {
         </button>
         {message && <p className="formMessage">{message}</p>}
       </form>
+    </section>
+  );
+}
+
+function LegalPage({ type }: { type: "privacy" | "terms" }) {
+  const isPrivacy = type === "privacy";
+
+  return (
+    <section className="legalPage">
+      <div className="eyebrow">
+        <ShieldCheck size={16} />
+        Spaces legal
+      </div>
+      <h1>{isPrivacy ? "Privacy Policy" : "Terms of Service"}</h1>
+      <p className="legalLead">
+        {isPrivacy
+          ? "Spaces uses one account to connect project services and AI-assisted workflows."
+          : "These terms define the first public access rules for Spaces while the platform is being built."}
+      </p>
+      <div className="legalContent">
+        {isPrivacy ? (
+          <>
+            <h2>Data We Process</h2>
+            <p>
+              Spaces stores account data such as email, display name, authentication provider, service access, and
+              operational records required to run connected services.
+            </p>
+            <h2>Authentication</h2>
+            <p>
+              Spaces uses Supabase Auth for email/password login, password recovery, and Google sign-in. Google may share
+              your profile name, avatar, and email after consent.
+            </p>
+            <h2>AI Access</h2>
+            <p>
+              AI features must only access data allowed for the current user and account. Vector search is used for
+              retrieval, not as the only source of truth for account or permission data.
+            </p>
+            <h2>Contact</h2>
+            <p>For privacy questions, contact digitalcluster25@gmail.com.</p>
+          </>
+        ) : (
+          <>
+            <h2>Access</h2>
+            <p>
+              Spaces is an early-stage platform. Access may be limited while account, AI, and service-management modules
+              are developed.
+            </p>
+            <h2>Acceptable Use</h2>
+            <p>
+              Users must not attempt to bypass authentication, access data that is not theirs, or abuse connected
+              services and automation.
+            </p>
+            <h2>Service Changes</h2>
+            <p>
+              Spaces may change features, connected services, and availability as the project evolves.
+            </p>
+            <h2>Contact</h2>
+            <p>For terms questions, contact digitalcluster25@gmail.com.</p>
+          </>
+        )}
+      </div>
     </section>
   );
 }
