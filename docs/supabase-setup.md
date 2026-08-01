@@ -44,6 +44,40 @@ Then enable Google provider in Supabase Auth and paste the Google client ID and 
 
 Google OAuth is not enabled yet because the Google OAuth client ID and secret have not been provided.
 
+## Provider secrets handoff
+
+Copy `.env.auth-providers.example` to `.env.auth-providers.local` and fill:
+
+```bash
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+
+SMTP_HOST=
+SMTP_PORT=587
+SMTP_USER=
+SMTP_PASS=
+SMTP_ADMIN_EMAIL=
+SMTP_SENDER_NAME=Spaces
+```
+
+Do not commit `.env.auth-providers.local`.
+
+## Trigger email status
+
+Custom Spaces email templates are prepared in:
+
+- `templates/confirmation.html`
+- `templates/recovery.html`
+- `templates/magic_link.html`
+- `templates/email_change.html`
+- `templates/password_changed_notification.html`
+
+Supabase rejected applying custom templates on the free default email provider:
+
+> Email template modification is not available for free tier projects using the default email provider. Please upgrade your plan or configure a custom SMTP provider.
+
+Therefore production trigger emails require a custom SMTP provider before templates can be enabled.
+
 ## Environment variables
 
 Local file:
