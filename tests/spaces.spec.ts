@@ -18,4 +18,10 @@ test("auth screens are available", async ({ page }) => {
 
   await page.goto("/forgot");
   await expect(page.getByRole("heading", { name: "Восстановить пароль" })).toBeVisible();
+
+  await page.goto("/reset-password");
+  await expect(page.getByRole("heading", { name: "Новый пароль" })).toBeVisible();
+
+  await page.goto("/account");
+  await expect(page.getByRole("heading", { name: "Аккаунт Spaces" })).toBeVisible();
 });

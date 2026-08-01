@@ -47,6 +47,13 @@ Current deployment:
 - Git checkout lives in `/opt/spaces/repo`.
 - Built static files are served from `/opt/spaces/site`.
 - SPA fallback for `/login`, `/register`, and `/forgot` is configured in `/opt/spaces/nginx.conf`.
+- Auth routes are `/login`, `/register`, `/forgot`, `/reset-password`, and `/account`.
+
+Supabase status:
+- Frontend Supabase auth wiring exists.
+- Supabase CLI exists locally, but no Supabase access token is available in this environment.
+- No real Supabase project keys are present locally or on the production server yet.
+- Required setup details are documented in `docs/supabase-setup.md`.
 
 Autodeploy:
 - `/opt/spaces/bin/deploy.sh` fetches `origin/main`, builds the project, syncs `dist/` into `/opt/spaces/site`, and restarts the container.

@@ -16,9 +16,8 @@ import {
   Network,
   ShieldCheck,
   Sparkles,
-  UserPlus,
 } from "lucide-react";
-import { createClient } from "@supabase/supabase-js";
+import { createClient, type Session } from "@supabase/supabase-js";
 import "./styles.css";
 
 type AuthMode = "login" | "register" | "forgot";
@@ -47,7 +46,15 @@ function App() {
   return (
     <main>
       <TopBar />
-      {authMode ? <AuthPage mode={authMode} /> : <Landing />}
+      {path === "/account" ? (
+        <AccountPage />
+      ) : path === "/reset-password" ? (
+        <ResetPasswordPage />
+      ) : authMode ? (
+        <AuthPage mode={authMode} />
+      ) : (
+        <Landing />
+      )}
     </main>
   );
 }
@@ -242,15 +249,26 @@ function AuthPage({ mode }: { mode: AuthMode }) {
       return;
     }
 
-    const redirectTo = `${window.location.origin}/login`;
+    const accountRedirect = `${window.location.origin}/account`;
+    const resetRedirect = `${window.location.origin}/reset-password`;
     const result = isLogin
       ? await supabase.auth.signInWithPassword({ email, password })
       : isRegister
-        ? await supabase.auth.signUp({ email, password, options: { data: { name }, emailRedirectTo: redirectTo } })
-        : await supabase.auth.resetPasswordForEmail(email, { redirectTo });
+        ? await supabase.auth.signUp({ email, password, options: { data: { name }, emailRedirectTo: accountRedirect } })
+        : await supabase.auth.resetPasswordForEmail(email, { redirectTo: resetRedirect });
 
     setLoading(false);
-    setMessage(result.error ? result.error.message : isLogin ? "Вход выполнен." : "Проверьте email.");
+    if (result.error) {
+      setMessage(result.error.message);
+      return;
+    }
+
+    if (isLogin) {
+      window.location.assign("/account");
+      return;
+    }
+
+    setMessage(isRegister ? "Аккаунт создан. Проверьте email, если подтверждение включено." : "Проверьте email.");
   }
 
   async function handleGoogleAuth() {
@@ -262,7 +280,7 @@ function AuthPage({ mode }: { mode: AuthMode }) {
     await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: window.location.origin,
+        redirectTo: `${window.location.origin}/account`,
       },
     });
   }
@@ -329,6 +347,151 @@ function AuthPage({ mode }: { mode: AuthMode }) {
           {!isRegister && <a href="/register">Создать аккаунт</a>}
           {mode !== "forgot" && <a href="/forgot">Напомнить пароль</a>}
         </div>
+      </form>
+    </section>
+  );
+}
+
+function AccountPage() {
+  const [session, setSession] = React.useState<Session | null>(null);
+  const [loading, setLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    if (!supabase) {
+      setLoading(false);
+      return;
+    }
+
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session);
+      setLoading(false);
+    });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      setSession(nextSession);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  async function handleSignOut() {
+    if (!supabase) {
+      return;
+    }
+
+    await supabase.auth.signOut();
+    window.location.assign("/");
+  }
+
+  return (
+    <section className="authShell">
+      <div className="authAside">
+        <div className="eyebrow">
+          <Fingerprint size={16} />
+          account hub
+        </div>
+        <h1>Аккаунт Spaces</h1>
+        <p>Здесь будет единый профиль пользователя, доступы ко всем сервисам и управление через AI.</p>
+      </div>
+
+      <div className="accountPanel">
+        {!authReady ? (
+          <>
+            <h2>Supabase не подключен</h2>
+            <p>Нужны `VITE_SUPABASE_URL` и `VITE_SUPABASE_ANON_KEY` в окружении сборки.</p>
+          </>
+        ) : loading ? (
+          <p>Проверяем сессию...</p>
+        ) : session ? (
+          <>
+            <h2>Вход выполнен</h2>
+            <p>{session.user.email}</p>
+            <div className="securityList compact">
+              <div>
+                <ShieldCheck size={20} />
+                <span>Сессия активна</span>
+              </div>
+              <div>
+                <Layers3 size={20} />
+                <span>Профиль готов к связке с сервисами</span>
+              </div>
+            </div>
+            <button className="outlineButton full" type="button" onClick={handleSignOut}>
+              Выйти
+            </button>
+          </>
+        ) : (
+          <>
+            <h2>Нужно войти</h2>
+            <p>После авторизации здесь появится единый аккаунт Spaces.</p>
+            <a className="solidButton full" href="/login">
+              Войти
+            </a>
+          </>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function ResetPasswordPage() {
+  const [password, setPassword] = React.useState("");
+  const [message, setMessage] = React.useState("");
+  const [loading, setLoading] = React.useState(false);
+
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setLoading(true);
+    setMessage("");
+
+    if (!supabase) {
+      setLoading(false);
+      setMessage("Auth backend еще не подключен. Добавьте VITE_SUPABASE_URL и VITE_SUPABASE_ANON_KEY.");
+      return;
+    }
+
+    const { error } = await supabase.auth.updateUser({ password });
+    setLoading(false);
+
+    if (error) {
+      setMessage(error.message);
+      return;
+    }
+
+    setMessage("Пароль обновлен.");
+    window.setTimeout(() => window.location.assign("/account"), 700);
+  }
+
+  return (
+    <section className="authShell">
+      <div className="authAside">
+        <div className="eyebrow">
+          <LockKeyhole size={16} />
+          password reset
+        </div>
+        <h1>Новый пароль</h1>
+        <p>Этот экран открывается из письма Supabase после запроса восстановления доступа.</p>
+      </div>
+
+      <form className="authForm" onSubmit={handleSubmit}>
+        <label>
+          Новый пароль
+          <input
+            type="password"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            placeholder="Минимум 8 символов"
+            autoComplete="new-password"
+            minLength={8}
+            required
+          />
+        </label>
+        <button className="solidButton full" type="submit" disabled={loading}>
+          {loading ? "Сохраняем..." : "Обновить пароль"}
+        </button>
+        {message && <p className="formMessage">{message}</p>}
       </form>
     </section>
   );

@@ -401,6 +401,31 @@ h3 {
   box-shadow: 0 24px 70px rgba(23, 33, 29, 0.13);
 }
 
+.accountPanel {
+  display: grid;
+  gap: 18px;
+  padding: 26px;
+  background: #ffffff;
+  border: 1px solid rgba(23, 33, 29, 0.1);
+  border-radius: 8px;
+  box-shadow: 0 24px 70px rgba(23, 33, 29, 0.13);
+}
+
+.accountPanel h2 {
+  margin-bottom: 0;
+  font-size: 2rem;
+}
+
+.accountPanel p {
+  margin-bottom: 0;
+  color: #5b675f;
+  line-height: 1.55;
+}
+
+.compact {
+  gap: 8px;
+}
+
 label {
   display: grid;
   gap: 8px;
