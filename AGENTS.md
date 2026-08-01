@@ -56,6 +56,8 @@ Supabase status:
 - Email/password auth has been tested successfully.
 - Profile creation trigger has been tested successfully.
 - Local `.env` and production `/opt/spaces/repo/.env` contain frontend Supabase values.
+- Resend SMTP is configured for Supabase Auth emails.
+- Spaces Auth email templates are applied.
 - Google OAuth is not enabled yet because Google OAuth client ID and secret are not available.
 - Required setup details are documented in `docs/supabase-setup.md`.
 

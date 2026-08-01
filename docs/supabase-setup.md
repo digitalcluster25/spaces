@@ -17,6 +17,9 @@ Completed:
 - Production site has been rebuilt with Supabase env values.
 - Email/password sign up and sign in were tested successfully.
 - `profiles` row creation trigger was tested successfully.
+- Resend SMTP is configured for Supabase Auth.
+- Spaces email templates are applied in Supabase Auth.
+- Supabase accepted signup and password reset requests with the Resend SMTP config.
 
 ## Required project settings
 
@@ -72,11 +75,16 @@ Custom Spaces email templates are prepared in:
 - `templates/email_change.html`
 - `templates/password_changed_notification.html`
 
-Supabase rejected applying custom templates on the free default email provider:
+Production trigger emails now use Resend SMTP:
 
-> Email template modification is not available for free tier projects using the default email provider. Please upgrade your plan or configure a custom SMTP provider.
+- Host: `smtp.resend.com`
+- Port: `465`
+- User: `resend`
+- Sender: `Spaces <no-reply@spaces.community>`
 
-Therefore production trigger emails require a custom SMTP provider before templates can be enabled.
+The SMTP password is stored only as a Supabase secret and in local ignored file `.env.auth-providers.local`.
+
+Actual mailbox delivery still needs to be verified with a real recipient inbox.
 
 ## Environment variables
 
