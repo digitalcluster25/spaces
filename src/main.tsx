@@ -145,6 +145,15 @@ function Landing() {
         </div>
       </section>
 
+      <section className="purposeSection" aria-label="What Spaces does">
+        <span className="sectionKicker">what spaces does</span>
+        <h2>Spaces is an account and AI control hub for connected project services.</h2>
+        <p>
+          Users sign in to Spaces with email or Google, manage one shared account, connect services on Spaces
+          subdomains, and use an AI assistant to find information, check service state, and perform permitted actions.
+        </p>
+      </section>
+
       <section className="sectionBand" id="platform">
         <div className="sectionIntro">
           <span className="sectionKicker">архитектура</span>

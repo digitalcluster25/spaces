@@ -270,11 +270,29 @@ h3 {
   color: #dce9e2;
 }
 
+.purposeSection,
 .sectionBand,
 .splitSection,
 .securitySection,
 .authShell {
   padding: 84px clamp(18px, 5vw, 72px);
+}
+
+.purposeSection {
+  background: #ffffff;
+  border-top: 1px solid rgba(23, 33, 29, 0.1);
+  border-bottom: 1px solid rgba(23, 33, 29, 0.1);
+}
+
+.purposeSection h2,
+.purposeSection p {
+  max-width: 900px;
+}
+
+.purposeSection p {
+  color: #5b675f;
+  font-size: 1.16rem;
+  line-height: 1.65;
 }
 
 .sectionIntro {
@@ -542,6 +560,7 @@ input:focus {
   }
 
   .hero,
+  .purposeSection,
   .sectionBand,
   .splitSection,
   .securitySection,
