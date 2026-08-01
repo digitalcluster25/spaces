@@ -102,6 +102,8 @@ function Landing() {
           <p>
             Главный сайт объединяет десятки рабочих инструментов на субдоменах: один профиль, единые права,
             общий контекст и помощник, который понимает данные каждого подключенного сервиса.
+            Spaces is the main account hub for project services, authentication, access control, and AI-assisted
+            service management.
           </p>
           <div className="heroActions">
             <a className="solidButton large" href="/register">
