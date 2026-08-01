@@ -62,8 +62,9 @@ Branding note:
 - Home page is `https://spaces.community`.
 - Privacy policy is `https://spaces.community/privacy`.
 - Terms are `https://spaces.community/terms`.
-- Google still may show the Supabase project URL until brand verification is completed.
-- Supabase also recommends using a custom auth domain, for example `auth.spaces.community`, so OAuth screens do not show the default `fnrzqmecumyagcajivsu.supabase.co` project URL.
+- Google brand verification is complete and Google reports that the branding is being shown to users.
+- The site ownership was verified in Google Search Console with `google8b4a961af5756704.html`.
+- Supabase recommends using a custom auth domain, for example `auth.spaces.community`, so OAuth screens do not show the default `fnrzqmecumyagcajivsu.supabase.co` project URL. This is not configured because Supabase returned `entitlement_required` for the current plan.
 
 ## Provider secrets handoff
 
@@ -102,7 +103,7 @@ Production trigger emails now use Resend SMTP:
 
 The SMTP password is stored only as a Supabase secret and in local ignored file `.env.auth-providers.local`.
 
-Actual mailbox delivery still needs to be verified with a real recipient inbox.
+Mailbox delivery was verified with `digitalcluster25@gmail.com`.
 
 ## Environment variables
 

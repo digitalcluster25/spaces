@@ -61,7 +61,8 @@ Supabase status:
 - Google OAuth is enabled and tested with `digitalcluster25@gmail.com`.
 - Google Cloud project for OAuth is `spaces-504202`.
 - Google app is published to production.
-- Google branding is set to `Spaces`, but the consent screen can still show the Supabase project URL until Google brand verification and/or Supabase custom auth domain are completed.
+- Google branding is verified and is being shown to users.
+- Supabase custom auth domain is not configured because it requires the Supabase Custom Domain add-on / paid plan.
 - Required setup details are documented in `docs/supabase-setup.md`.
 
 Autodeploy:
