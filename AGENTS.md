@@ -50,9 +50,13 @@ Current deployment:
 - Auth routes are `/login`, `/register`, `/forgot`, `/reset-password`, and `/account`.
 
 Supabase status:
-- Frontend Supabase auth wiring exists.
-- Supabase CLI exists locally, but no Supabase access token is available in this environment.
-- No real Supabase project keys are present locally or on the production server yet.
+- Supabase project `spaces` exists with ref `fnrzqmecumyagcajivsu`.
+- Supabase CLI is linked to the project.
+- Initial database migration has been applied.
+- Email/password auth has been tested successfully.
+- Profile creation trigger has been tested successfully.
+- Local `.env` and production `/opt/spaces/repo/.env` contain frontend Supabase values.
+- Google OAuth is not enabled yet because Google OAuth client ID and secret are not available.
 - Required setup details are documented in `docs/supabase-setup.md`.
 
 Autodeploy:

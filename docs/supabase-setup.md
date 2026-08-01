@@ -1,10 +1,26 @@
 # Supabase Setup for Spaces
 
-Current state: the Spaces frontend is wired to Supabase Auth, but no real Supabase project keys are present in this repo, local environment, or production server.
+Current state: the Spaces frontend is wired to a real Supabase project.
+
+Project:
+- Name: `spaces`
+- Ref: `fnrzqmecumyagcajivsu`
+- Region: `eu-west-3`
+- Dashboard: `https://supabase.com/dashboard/project/fnrzqmecumyagcajivsu`
+
+Completed:
+- Supabase CLI is linked to project `fnrzqmecumyagcajivsu`.
+- Database migration has been applied.
+- Auth Site URL and redirect URLs have been pushed to Supabase.
+- Local `.env` exists.
+- Production `/opt/spaces/repo/.env` exists.
+- Production site has been rebuilt with Supabase env values.
+- Email/password sign up and sign in were tested successfully.
+- `profiles` row creation trigger was tested successfully.
 
 ## Required project settings
 
-Create or choose a Supabase project, then configure:
+Configured project settings:
 
 - Site URL: `https://spaces.community`
 - Redirect URLs:
@@ -26,6 +42,8 @@ Authorized redirect URI:
 
 Then enable Google provider in Supabase Auth and paste the Google client ID and secret there.
 
+Google OAuth is not enabled yet because the Google OAuth client ID and secret have not been provided.
+
 ## Environment variables
 
 Local file:
@@ -41,7 +59,7 @@ VITE_SUPABASE_URL=https://<SUPABASE_PROJECT_REF>.supabase.co
 VITE_SUPABASE_ANON_KEY=<anon-public-key>
 ```
 
-After adding production env values, run:
+After changing production env values, run:
 
 ```bash
 ssh root@69.62.121.157 'systemctl start spaces-deploy.service'
