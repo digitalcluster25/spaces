@@ -31,3 +31,23 @@ Required workflow:
 5. Deployment to `spaces.community` happens automatically after push.
 
 Do not push changes if Playwright verification fails.
+
+## Production Deployment
+
+Production host:
+- Domain: `spaces.community`
+- Server IP: `69.62.121.157`
+- Root SSH access is available from this device by public key.
+
+Current deployment:
+- Static build is served by Docker container `spaces-site`.
+- Container uses `nginx:alpine`.
+- Traefik routes `Host(\`spaces.community\`)` to the container.
+- Project files live in `/opt/spaces` on the server.
+- Git checkout lives in `/opt/spaces/repo`.
+- Built static files are served from `/opt/spaces/site`.
+- SPA fallback for `/login`, `/register`, and `/forgot` is configured in `/opt/spaces/nginx.conf`.
+
+Autodeploy:
+- `/opt/spaces/bin/deploy.sh` fetches `origin/main`, builds the project, syncs `dist/` into `/opt/spaces/site`, and restarts the container.
+- `spaces-deploy.timer` runs the deploy service every minute.
