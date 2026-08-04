@@ -78,5 +78,8 @@ OpenSEO:
 - Image: `ghcr.io/every-app/open-seo:latest`
 - Route is handled by Traefik with Let's Encrypt TLS.
 - Docker self-host mode uses `AUTH_MODE=local_noauth`; public access is protected by Traefik Basic Auth until Spaces unified auth is connected.
-- `DATAFORSEO_API_KEY` is not configured yet, so real SEO data features require adding DataForSEO Base64 credentials to `/opt/openseo/.env`.
+- `DATAFORSEO_API_KEY` is configured in `/opt/openseo/.env`.
+- Google Search Console API is enabled in Google Cloud project `spaces-504202`.
+- Google Search Console OAuth is configured with redirect URI `https://openseo.spaces.community/api/gsc/oauth/callback`.
+- OpenSEO project `Default` / `homewoodspa.com` is connected to Google Search Console property `https://homewoodspa.com/`.
 - Optional AI features require `OPENROUTER_API_KEY` and `OPENROUTER_MODEL` in `/opt/openseo/.env`.
