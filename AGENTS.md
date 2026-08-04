@@ -68,3 +68,15 @@ Supabase status:
 Autodeploy:
 - `/opt/spaces/bin/deploy.sh` fetches `origin/main`, builds the project, syncs `dist/` into `/opt/spaces/site`, and restarts the container.
 - `spaces-deploy.timer` runs the deploy service every minute.
+
+## Connected Services
+
+OpenSEO:
+- URL: `https://openseo.spaces.community`
+- Server path: `/opt/openseo`
+- Container: `openseo`
+- Image: `ghcr.io/every-app/open-seo:latest`
+- Route is handled by Traefik with Let's Encrypt TLS.
+- Docker self-host mode uses `AUTH_MODE=local_noauth`; public access is protected by Traefik Basic Auth until Spaces unified auth is connected.
+- `DATAFORSEO_API_KEY` is not configured yet, so real SEO data features require adding DataForSEO Base64 credentials to `/opt/openseo/.env`.
+- Optional AI features require `OPENROUTER_API_KEY` and `OPENROUTER_MODEL` in `/opt/openseo/.env`.
