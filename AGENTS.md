@@ -38,6 +38,10 @@ Production host:
 - Domain: `spaces.community`
 - Server IP: `69.62.121.157`
 - Root SSH access is available from this device by public key.
+- Cloudflare zone ID: `a36d09a44859dc6ab0b44b195e665300`.
+- Cloudflare nameservers: `emerie.ns.cloudflare.com`, `yew.ns.cloudflare.com`.
+- Hostinger nameservers were replaced with Cloudflare nameservers on 2026-09-03.
+- Cloudflare zone activation is pending DNS propagation.
 
 Current deployment:
 - Static build is served by Docker container `spaces-site`.
@@ -91,6 +95,8 @@ OpenSEO Cloudflare MCP deployment:
 - Zero Trust team domain: `https://dawn-snowflake-e7c2.cloudflareaccess.com`.
 - Worker URL: `https://open-seo-selfhost.digitalcluster25-501.workers.dev`.
 - MCP URL for ChatGPT/custom MCP clients: `https://open-seo-selfhost.digitalcluster25-501.workers.dev/mcp`.
+- Worker route prepared: `openseo.spaces.community/*` -> `open-seo-selfhost`.
+- Access custom-domain update for `openseo.spaces.community` must be retried after Cloudflare zone activation.
 - Cloudflare Access application: `open-seo selfhost`.
 - Cloudflare Access Managed OAuth is enabled for MCP clients.
 - Dynamic client registration allows localhost, loopback, `https://chatgpt.com/*`, and `https://chat.openai.com/*`.
