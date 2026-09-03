@@ -83,3 +83,16 @@ OpenSEO:
 - Google Search Console OAuth is configured with redirect URI `https://openseo.spaces.community/api/gsc/oauth/callback`.
 - OpenSEO project `Default` / `homewoodspa.com` is connected to Google Search Console property `https://homewoodspa.com/`.
 - Optional AI features require `OPENROUTER_API_KEY` and `OPENROUTER_MODEL` in `/opt/openseo/.env`.
+
+OpenSEO Cloudflare MCP deployment:
+- Local repo path: `/Users/macbookpro/Coding/open-seo`.
+- Cloudflare account ID: `501500e8bf5a60f603060e9981cb09d3`.
+- Cloudflare Workers subdomain: `digitalcluster25.workers.dev`.
+- Zero Trust team domain: `https://dawn-snowflake-e7c2.cloudflareaccess.com`.
+- Worker URL: `https://open-seo-selfhost.digitalcluster25-501.workers.dev`.
+- MCP URL for ChatGPT/custom MCP clients: `https://open-seo-selfhost.digitalcluster25-501.workers.dev/mcp`.
+- Cloudflare Access application: `open-seo selfhost`.
+- Cloudflare Access Managed OAuth is enabled for MCP clients.
+- Dynamic client registration allows localhost, loopback, `https://chatgpt.com/*`, and `https://chat.openai.com/*`.
+- Access allow-list currently includes `digitalcluster25@gmail.com`.
+- Secrets live only in `/Users/macbookpro/Coding/open-seo/.env.selfhost`; never commit or print them.
