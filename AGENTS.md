@@ -70,7 +70,8 @@ Supabase status:
 - Required setup details are documented in `docs/supabase-setup.md`.
 
 Autodeploy:
-- `/opt/spaces/bin/deploy.sh` fetches `origin/main`, builds the project, syncs `dist/` into `/opt/spaces/site`, and restarts the container.
+- `/opt/spaces/bin/deploy.sh` should match the versioned script at `scripts/deploy.sh`.
+- The deploy script fetches `origin/main`, builds the project, syncs `dist/` into `/opt/spaces/site`, restarts the container, and writes `/opt/spaces/deployed-revision`.
 - `spaces-deploy.timer` runs the deploy service every minute.
 
 ## Connected Services
