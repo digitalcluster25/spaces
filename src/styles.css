@@ -479,6 +479,84 @@ h3 {
   justify-content: flex-end;
 }
 
+.aiControlPanel {
+  display: grid;
+  gap: 14px;
+  padding-top: 10px;
+}
+
+.chatHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.chatHeader h3 {
+  margin: 8px 0 0;
+}
+
+.chatStatus {
+  flex: 0 0 auto;
+  padding: 5px 9px;
+  color: #5b4a12;
+  background: #f2e5b8;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 850;
+}
+
+.chatThread {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  background: #101714;
+  border-radius: 8px;
+}
+
+.chatMessage {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  max-width: 92%;
+  padding: 12px;
+  border-radius: 8px;
+}
+
+.chatMessage p {
+  margin: 0;
+  color: inherit;
+}
+
+.chatMessage.assistant {
+  color: #dfe9e4;
+  background: #19231f;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.chatMessage.assistant svg {
+  flex: 0 0 auto;
+  color: #a8e0c6;
+}
+
+.chatMessage.user {
+  justify-self: end;
+  color: #17211d;
+  background: #d9e7de;
+}
+
+.chatComposer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+}
+
+.chatComposer input:disabled,
+.chatComposer button:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
 .accountPanel h2 {
   margin-bottom: 0;
   font-size: 2rem;
@@ -599,6 +677,10 @@ input:focus {
 
   .serviceActions {
     justify-content: flex-start;
+  }
+
+  .chatComposer {
+    grid-template-columns: 1fr;
   }
 }
 

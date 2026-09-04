@@ -14,7 +14,9 @@ import {
   Layers3,
   LockKeyhole,
   Mail,
+  MessageSquareText,
   Network,
+  Send,
   ShieldCheck,
   Sparkles,
 } from "lucide-react";
@@ -459,6 +461,7 @@ function AccountPage() {
           </>
         )}
         <ServiceDirectory />
+        <AIControlPanel />
       </div>
     </section>
   );
@@ -491,6 +494,40 @@ function ServiceDirectory() {
           </div>
         </article>
       ))}
+    </section>
+  );
+}
+
+function AIControlPanel() {
+  return (
+    <section className="aiControlPanel" aria-label="AI чат управления">
+      <div className="chatHeader">
+        <div>
+          <span className="sectionKicker">AI control</span>
+          <h3>AI чат управления</h3>
+        </div>
+        <span className="chatStatus">read-only</span>
+      </div>
+      <div className="chatThread">
+        <div className="chatMessage assistant">
+          <MessageSquareText size={18} />
+          <p>Я вижу подключенный OpenSEO и его MCP endpoint. Следующий шаг - связать чат с правами аккаунта.</p>
+        </div>
+        <div className="chatMessage user">
+          <p>Покажи статус сервисов Spaces.</p>
+        </div>
+        <div className="chatMessage assistant">
+          <MessageSquareText size={18} />
+          <p>OpenSEO: MCP готов. Доступ защищен Cloudflare Access. UI открыт на openseo.spaces.community.</p>
+        </div>
+      </div>
+      <form className="chatComposer">
+        <input aria-label="Сообщение AI чату" placeholder="Спросить AI по сервисам Spaces" disabled />
+        <button className="solidButton" type="button" disabled>
+          <Send size={16} />
+          Отправить
+        </button>
+      </form>
     </section>
   );
 }
