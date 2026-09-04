@@ -91,11 +91,25 @@ Current production paths:
 Fallback MCP path:
 - `https://open-seo-selfhost.digitalcluster25-501.workers.dev/mcp`.
 
+## Current Spaces UI State
+
+The account page now includes:
+- auth session status from Supabase;
+- a connected services directory;
+- OpenSEO as the first service entry;
+- OpenSEO UI and MCP links;
+- a read-only AI control chat surface.
+
+The current chat surface is intentionally not wired to a live AI backend yet.
+It documents the intended product behavior and shows the first service status.
+The next backend step is to add a real server endpoint that checks the signed-in
+user, resolves allowed service tools, and only then calls service integrations.
+
 ## Near-Term Implementation Order
 
 1. Verify OpenSEO MCP in ChatGPT with `https://openseo.spaces.community/mcp`.
-2. Add a service registry to Spaces.
-3. Add an account dashboard that shows connected services.
-4. Register OpenSEO as the first service.
-5. Add a minimal AI chat surface with read-only service status tools.
+2. Add a real service registry table in Supabase.
+3. Store OpenSEO as the first service record.
+4. Add a server-backed AI chat endpoint with read-only service status tools.
+5. Add audit logging for every AI request and proposed action.
 6. Add confirmed write actions only after audit logging exists.
