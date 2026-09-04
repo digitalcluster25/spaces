@@ -429,6 +429,56 @@ h3 {
   box-shadow: 0 24px 70px rgba(23, 33, 29, 0.13);
 }
 
+.serviceDirectory {
+  display: grid;
+  gap: 12px;
+  padding-top: 8px;
+}
+
+.serviceDirectory h3 {
+  margin: 8px 0 0;
+}
+
+.connectedService {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: center;
+  padding: 16px;
+  background: #f8f8f5;
+  border: 1px solid rgba(23, 33, 29, 0.1);
+  border-radius: 8px;
+}
+
+.serviceTitle,
+.serviceActions {
+  display: flex;
+  align-items: center;
+}
+
+.serviceTitle {
+  gap: 10px;
+}
+
+.serviceTitle span {
+  padding: 4px 8px;
+  color: #1f5f4a;
+  background: #d9e7de;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 850;
+}
+
+.connectedService p {
+  margin-top: 8px;
+}
+
+.serviceActions {
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 .accountPanel h2 {
   margin-bottom: 0;
   font-size: 2rem;
@@ -541,6 +591,14 @@ input:focus {
 
   .featureGrid {
     grid-template-columns: 1fr;
+  }
+
+  .connectedService {
+    grid-template-columns: 1fr;
+  }
+
+  .serviceActions {
+    justify-content: flex-start;
   }
 }
 

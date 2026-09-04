@@ -7,6 +7,7 @@ import {
   Check,
   ChevronRight,
   Command,
+  ExternalLink,
   Fingerprint,
   Globe2,
   KeyRound,
@@ -36,6 +37,17 @@ const services = [
   "Tasks",
   "Marketing",
   "Inventory",
+];
+
+const connectedServices = [
+  {
+    id: "openseo",
+    name: "OpenSEO",
+    description: "SEO workflows, DataForSEO, Google Search Console and AI/MCP access.",
+    status: "MCP ready",
+    uiUrl: "https://openseo.spaces.community",
+    mcpUrl: "https://openseo.spaces.community/mcp",
+  },
 ];
 
 function App() {
@@ -446,7 +458,39 @@ function AccountPage() {
             </a>
           </>
         )}
+        <ServiceDirectory />
       </div>
+    </section>
+  );
+}
+
+function ServiceDirectory() {
+  return (
+    <section className="serviceDirectory" aria-label="Подключенные сервисы">
+      <div>
+        <span className="sectionKicker">services</span>
+        <h3>Подключенные сервисы</h3>
+      </div>
+      {connectedServices.map((service) => (
+        <article className="connectedService" key={service.id}>
+          <div>
+            <div className="serviceTitle">
+              <strong>{service.name}</strong>
+              <span>{service.status}</span>
+            </div>
+            <p>{service.description}</p>
+          </div>
+          <div className="serviceActions">
+            <a className="outlineButton" href={service.uiUrl}>
+              Открыть
+              <ExternalLink size={16} />
+            </a>
+            <a className="ghostButton" href={service.mcpUrl}>
+              MCP
+            </a>
+          </div>
+        </article>
+      ))}
     </section>
   );
 }

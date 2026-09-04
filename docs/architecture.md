@@ -85,20 +85,17 @@ OpenSEO is the first connected service.
 
 Current production paths:
 - Human UI: `https://openseo.spaces.community` on the VPS Docker deployment.
-- MCP/AI path: `https://open-seo-selfhost.digitalcluster25-501.workers.dev/mcp`
-  through Cloudflare Access Managed OAuth.
+- MCP/AI path: `https://openseo.spaces.community/mcp` through Cloudflare
+  Access Managed OAuth.
 
-Target path:
-- Move MCP to `https://openseo.spaces.community/mcp` after
-  `spaces.community` finishes Cloudflare nameserver propagation and Access
-  accepts the custom domain.
+Fallback MCP path:
+- `https://open-seo-selfhost.digitalcluster25-501.workers.dev/mcp`.
 
 ## Near-Term Implementation Order
 
-1. Finish Cloudflare DNS activation for `spaces.community`.
-2. Move OpenSEO MCP from `workers.dev` to `openseo.spaces.community`.
-3. Add a service registry to Spaces.
-4. Add an account dashboard that shows connected services.
-5. Register OpenSEO as the first service.
-6. Add a minimal AI chat surface with read-only service status tools.
-7. Add confirmed write actions only after audit logging exists.
+1. Verify OpenSEO MCP in ChatGPT with `https://openseo.spaces.community/mcp`.
+2. Add a service registry to Spaces.
+3. Add an account dashboard that shows connected services.
+4. Register OpenSEO as the first service.
+5. Add a minimal AI chat surface with read-only service status tools.
+6. Add confirmed write actions only after audit logging exists.
