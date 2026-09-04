@@ -467,6 +467,17 @@ function AccountPage() {
 }
 
 function ServiceDirectory({ session }: { session: Session | null }) {
+  function launchService(serviceUrl: string) {
+    if (!session) {
+      window.location.assign("/login");
+      return;
+    }
+
+    const secondsLeft = Math.max(60, Math.floor((session.expires_at ?? Date.now() / 1000 + 3600) - Date.now() / 1000));
+    document.cookie = `spaces_access_token=${session.access_token}; Domain=.spaces.community; Path=/; Max-Age=${secondsLeft}; Secure; SameSite=Lax`;
+    window.location.assign(serviceUrl);
+  }
+
   return (
     <section className="serviceDirectory" aria-label="Подключенные сервисы">
       <div>
@@ -483,10 +494,17 @@ function ServiceDirectory({ session }: { session: Session | null }) {
             <p>{service.description}</p>
           </div>
           <div className="serviceActions">
-            <a className="outlineButton" href={session ? service.uiUrl : "/login"}>
-              Открыть
-              <ExternalLink size={16} />
-            </a>
+            {session ? (
+              <button className="outlineButton" type="button" onClick={() => launchService(service.uiUrl)}>
+                Открыть
+                <ExternalLink size={16} />
+              </button>
+            ) : (
+              <a className="outlineButton" href="/login">
+                Открыть
+                <ExternalLink size={16} />
+              </a>
+            )}
             <a className="ghostButton" href={service.mcpUrl}>
               MCP
             </a>
