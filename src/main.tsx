@@ -16,7 +16,6 @@ import {
   Mail,
   MessageSquareText,
   Network,
-  Send,
   ShieldCheck,
   Sparkles,
 } from "lucide-react";
@@ -46,7 +45,7 @@ const connectedServices = [
     id: "openseo",
     name: "OpenSEO",
     description: "SEO workflows, DataForSEO, Google Search Console and AI/MCP access.",
-    status: "MCP ready",
+    status: "MCP ready, SSO next",
     uiUrl: "https://openseo.spaces.community",
     mcpUrl: "https://openseo.spaces.community/mcp",
   },
@@ -460,14 +459,14 @@ function AccountPage() {
             </a>
           </>
         )}
-        <ServiceDirectory />
-        <AIControlPanel />
+        <ServiceDirectory session={session} />
+        <ExternalAgentPanel />
       </div>
     </section>
   );
 }
 
-function ServiceDirectory() {
+function ServiceDirectory({ session }: { session: Session | null }) {
   return (
     <section className="serviceDirectory" aria-label="Подключенные сервисы">
       <div>
@@ -484,7 +483,7 @@ function ServiceDirectory() {
             <p>{service.description}</p>
           </div>
           <div className="serviceActions">
-            <a className="outlineButton" href={service.uiUrl}>
+            <a className="outlineButton" href={session ? service.uiUrl : "/login"}>
               Открыть
               <ExternalLink size={16} />
             </a>
@@ -498,36 +497,29 @@ function ServiceDirectory() {
   );
 }
 
-function AIControlPanel() {
+function ExternalAgentPanel() {
   return (
-    <section className="aiControlPanel" aria-label="AI чат управления">
+    <section className="aiControlPanel" aria-label="MCP для внешних агентов">
       <div className="chatHeader">
         <div>
-          <span className="sectionKicker">AI control</span>
-          <h3>AI чат управления</h3>
+          <span className="sectionKicker">agent access</span>
+          <h3>MCP для внешних агентов</h3>
         </div>
-        <span className="chatStatus">read-only</span>
+        <span className="chatStatus">first</span>
       </div>
       <div className="chatThread">
         <div className="chatMessage assistant">
           <MessageSquareText size={18} />
-          <p>Я вижу подключенный OpenSEO и его MCP endpoint. Следующий шаг - связать чат с правами аккаунта.</p>
+          <p>Сначала подключаем внешних агентов к сервисам через MCP. Собственный чат Spaces добавим после обкатки.</p>
         </div>
         <div className="chatMessage user">
-          <p>Покажи статус сервисов Spaces.</p>
+          <p>Первый сервис: OpenSEO.</p>
         </div>
         <div className="chatMessage assistant">
           <MessageSquareText size={18} />
-          <p>OpenSEO: MCP готов. Доступ защищен Cloudflare Access. UI открыт на openseo.spaces.community.</p>
+          <p>OpenSEO MCP endpoint готов. Следующий шаг - заменить отдельную авторизацию OpenSEO на Spaces/Supabase SSO.</p>
         </div>
       </div>
-      <form className="chatComposer">
-        <input aria-label="Сообщение AI чату" placeholder="Спросить AI по сервисам Spaces" disabled />
-        <button className="solidButton" type="button" disabled>
-          <Send size={16} />
-          Отправить
-        </button>
-      </form>
     </section>
   );
 }

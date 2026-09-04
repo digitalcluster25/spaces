@@ -4,8 +4,10 @@ Spaces is the account hub for project services hosted on subdomains.
 
 ## Current Goal
 
-Build one account system, one service directory, and one AI control surface that
-can safely operate connected services for the signed-in user.
+Build one account system and a modular service environment where external AI
+agents can connect to authorized services through MCP. Spaces owns identity,
+service discovery, permissions, and launch flow. A native Spaces chat with
+agents comes later, after external MCP access is proven.
 
 ## Core Entities
 
@@ -47,11 +49,11 @@ only in a vector database.
 - `member`: can use connected services allowed by the organization.
 - `viewer`: read-only access.
 
-## AI Access Contract
+## Agent Access Contract
 
-AI never receives blanket access by default.
+Agents never receive blanket access by default.
 
-Every AI request must resolve:
+Every external agent or MCP request must resolve:
 - signed-in user;
 - active organization;
 - user role;
@@ -60,9 +62,13 @@ Every AI request must resolve:
 - allowed write tools;
 - whether confirmation is required.
 
-AI may read low-risk service data after permission checks.
-AI write actions must be recorded as `ai_action` and require explicit user
+Agents may read low-risk service data after permission checks.
+Write actions must be recorded as `ai_action` and require explicit user
 confirmation unless the action is marked safe and reversible.
+
+The first integration target is external agents connecting their own MCP client
+to a Spaces-authorized service. Native Spaces chat is a later frontend for the
+same permissioned service layer.
 
 ## Service Integration Contract
 
@@ -72,7 +78,7 @@ Each service should expose the same integration shape:
 - `name`: display name.
 - `base_url`: user-facing URL.
 - `status`: `available`, `connected`, `needs_setup`, `error`.
-- `auth_mode`: `spaces_session`, `cloudflare_access`, `oauth`, `api_key`, or
+- `auth_mode`: `spaces_supabase`, `cloudflare_access`, `oauth`, `api_key`, or
   `manual`.
 - `mcp_url`: optional MCP endpoint.
 - `required_secrets`: names only, never values.
@@ -98,18 +104,23 @@ The account page now includes:
 - a connected services directory;
 - OpenSEO as the first service entry;
 - OpenSEO UI and MCP links;
-- a read-only AI control chat surface.
+- an external-agent MCP status surface.
 
-The current chat surface is intentionally not wired to a live AI backend yet.
-It documents the intended product behavior and shows the first service status.
-The next backend step is to add a real server endpoint that checks the signed-in
-user, resolves allowed service tools, and only then calls service integrations.
+The old "native chat first" direction is deprecated. The immediate product
+path is: sign in to Spaces, see available services in the dashboard, launch
+OpenSEO without a second login, and connect external agents to OpenSEO MCP under
+the same Spaces account. Native Spaces chat comes after this agent/service
+contract works in production.
 
 ## Near-Term Implementation Order
 
-1. Verify OpenSEO MCP in ChatGPT with `https://openseo.spaces.community/mcp`.
-2. Add a real service registry table in Supabase.
-3. Store OpenSEO as the first service record.
-4. Add a server-backed AI chat endpoint with read-only service status tools.
-5. Add audit logging for every AI request and proposed action.
-6. Add confirmed write actions only after audit logging exists.
+1. Make the Spaces dashboard the source of service discovery and launch.
+2. Replace OpenSEO's current independent self-host auth with Spaces/Supabase
+   SSO.
+3. Ensure one Spaces user maps to the same OpenSEO user and organization.
+4. Verify dashboard launch: signed-in Spaces user opens OpenSEO without a
+   second login.
+5. Verify external-agent MCP connection uses the same authorized user context.
+6. Add audit logging for every MCP request and proposed action.
+7. Add native Spaces chat only after OpenSEO MCP works reliably through external
+   agents.
