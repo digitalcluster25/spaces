@@ -6,9 +6,9 @@ test("landing page presents Spaces product and auth entry points", async ({ page
   await expect(page.getByRole("heading", { name: /Spaces управляет/i })).toBeVisible();
   await expect(page.getByRole("link", { name: "Создать аккаунт" }).first()).toBeVisible();
   await expect(page.getByText("AI-оператор Spaces")).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Карта созданных страниц Spaces." })).toBeVisible();
-  await expect(page.locator(".sitemapCard")).toHaveCount(8);
-  await expect(page.getByText("OpenSEO не включен")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Платформа" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Карта созданных страниц Spaces." })).toHaveCount(0);
+  await expect(page.locator(".purposeSection, .sitemapSection, .sectionBand, .splitSection, .securitySection")).toHaveCount(0);
 });
 
 test("auth screens are available", async ({ page }) => {
@@ -29,9 +29,10 @@ test("auth screens are available", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Аккаунт Spaces" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Подключенные сервисы" })).toBeVisible();
   await expect(page.getByText("OpenSEO", { exact: true })).toBeVisible();
+  await expect(page.getByText("Outline", { exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "MCP для внешних агентов" })).toBeVisible();
   await expect(page.getByText("OpenSEO SSO работает")).toBeVisible();
-  await expect(page.getByRole("link", { name: /Открыть/ })).toHaveAttribute("href", "/login");
+  await expect(page.getByRole("link", { name: /Открыть/ }).first()).toHaveAttribute("href", "/login");
   await expect(page.getByRole("link", { name: "MCP" })).toHaveAttribute(
     "href",
     "https://openseo.spaces.community/mcp",

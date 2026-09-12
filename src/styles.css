@@ -15,7 +15,8 @@
   color: var(--foreground);
   background: var(--background);
   font-family:
-    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 16px;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -65,7 +66,6 @@ main {
 
 .brand,
 .topActions,
-nav,
 .heroActions,
 .serviceTitle,
 .serviceActions {
@@ -79,8 +79,7 @@ nav,
 }
 
 .brandMark,
-.assistantIcon,
-.featureIcon {
+.assistantIcon {
   display: grid;
   place-items: center;
   width: 36px;
@@ -88,12 +87,6 @@ nav,
   color: var(--primary-foreground);
   background: var(--primary);
   border-radius: var(--radius);
-}
-
-nav {
-  gap: 22px;
-  color: var(--muted-foreground);
-  font-size: 0.94rem;
 }
 
 .topActions,
@@ -158,9 +151,33 @@ nav {
   background: var(--muted);
 }
 
+.shadowButton {
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.userAvatar {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  overflow: hidden;
+  color: var(--primary-foreground);
+  background: var(--primary);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+.userAvatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
 .large {
-  min-height: 48px;
-  padding: 0 20px;
+  min-height: 44px;
+  padding: 0 18px;
 }
 
 .full {
@@ -170,10 +187,10 @@ nav {
 .hero {
   display: grid;
   grid-template-columns: minmax(0, 1.02fr) minmax(340px, 0.78fr);
-  gap: clamp(30px, 6vw, 86px);
+  gap: clamp(30px, 6vw, 78px);
   align-items: center;
   min-height: calc(100vh - 69px);
-  padding: clamp(48px, 8vw, 108px) clamp(18px, 5vw, 72px) 56px;
+  padding: clamp(44px, 7vw, 88px) clamp(18px, 5vw, 72px) 56px;
   background:
     linear-gradient(var(--border) 1px, transparent 1px),
     linear-gradient(90deg, var(--border) 1px, transparent 1px);
@@ -205,32 +222,34 @@ p {
 
 h1 {
   margin-bottom: 24px;
-  font-size: clamp(3rem, 7vw, 6.4rem);
-  line-height: 0.92;
+  font-size: clamp(2.5rem, 5vw, 4.5rem);
+  line-height: 1.05;
+  font-weight: 800;
   letter-spacing: 0;
 }
 
 h2 {
   margin-bottom: 18px;
-  font-size: clamp(2rem, 4.4vw, 3.8rem);
-  line-height: 1;
+  font-size: clamp(1.875rem, 3vw, 3rem);
+  line-height: 1.08;
+  font-weight: 750;
   letter-spacing: 0;
 }
 
 h3 {
   margin-bottom: 12px;
-  font-size: 1.18rem;
+  font-size: 1.125rem;
+  line-height: 1.25;
 }
 
 .hero p,
 .splitSection p,
 .securityCopy p,
 .authAside p,
-.sectionIntro p,
-.purposeSection p {
+.sectionIntro p {
   color: var(--muted-foreground);
-  font-size: clamp(1.02rem, 2vw, 1.18rem);
-  line-height: 1.65;
+  font-size: 1.125rem;
+  line-height: 1.75;
 }
 
 .heroActions {
@@ -238,8 +257,6 @@ h3 {
 }
 
 .consolePanel,
-.featureCard,
-.sitemapCard,
 .authForm,
 .accountPanel,
 .connectedService,
@@ -316,8 +333,6 @@ h3 {
   align-items: center;
 }
 
-.purposeSection,
-.sitemapSection,
 .sectionBand,
 .splitSection,
 .securitySection,
@@ -325,14 +340,10 @@ h3 {
   padding: 84px clamp(18px, 5vw, 72px);
 }
 
-.purposeSection,
-.sitemapSection,
 .splitSection {
   border-top: 1px solid var(--border);
 }
 
-.purposeSection h2,
-.purposeSection p,
 .sectionIntro {
   max-width: 900px;
 }
@@ -341,51 +352,24 @@ h3 {
   margin-bottom: 34px;
 }
 
-.featureGrid,
-.sitemapGrid {
+.featureGrid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 16px;
 }
 
-.sitemapGrid {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-}
-
-.featureCard,
-.sitemapCard {
+.featureCard {
   min-height: 240px;
   padding: 24px;
 }
 
-.featureIcon {
-  margin-bottom: 24px;
-}
-
 .featureCard p,
-.sitemapCard p,
 .connectedService p,
 .accountPanel p,
 .legalContent p,
 .legalLead {
   color: var(--muted-foreground);
   line-height: 1.6;
-}
-
-.sitemapCard {
-  display: grid;
-  align-content: start;
-  gap: 12px;
-}
-
-.sitemapCard:hover {
-  background: var(--muted);
-}
-
-.sitemapCard div {
-  display: flex;
-  gap: 10px;
-  align-items: center;
 }
 
 code {
@@ -458,7 +442,7 @@ code {
 }
 
 .authAside h1 {
-  font-size: clamp(2.7rem, 6vw, 5.2rem);
+  font-size: clamp(2.25rem, 5vw, 3.75rem);
 }
 
 .authPromise {
@@ -634,7 +618,7 @@ input:focus {
 
 .legalPage h1 {
   margin-top: 16px;
-  font-size: clamp(2.8rem, 6vw, 5.2rem);
+  font-size: clamp(2.25rem, 5vw, 3.75rem);
 }
 
 .legalContent h2 {
@@ -642,21 +626,7 @@ input:focus {
   font-size: 1.45rem;
 }
 
-@media (max-width: 980px) {
-  .sitemapGrid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
 @media (max-width: 860px) {
-  .topbar {
-    align-items: flex-start;
-  }
-
-  nav {
-    display: none;
-  }
-
   .hero,
   .splitSection,
   .securitySection,
@@ -701,8 +671,6 @@ input:focus {
   }
 
   .hero,
-  .purposeSection,
-  .sitemapSection,
   .sectionBand,
   .splitSection,
   .securitySection,
@@ -712,11 +680,10 @@ input:focus {
   }
 
   h1 {
-    font-size: 3rem;
+    font-size: 2.5rem;
   }
 
-  .serviceGrid,
-  .sitemapGrid {
+  .serviceGrid {
     grid-template-columns: 1fr;
   }
 }

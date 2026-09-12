@@ -5,18 +5,14 @@ import {
   Bot,
   BrainCircuit,
   Check,
-  ChevronRight,
   Command,
   ExternalLink,
   Fingerprint,
-  Globe2,
   KeyRound,
   Layers3,
   LockKeyhole,
   Mail,
-  Map,
   MessageSquareText,
-  Network,
   ShieldCheck,
   Sparkles,
 } from "lucide-react";
@@ -30,6 +26,15 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undef
 const authReady = Boolean(supabaseUrl && supabaseAnonKey);
 const supabase = authReady ? createClient(supabaseUrl!, supabaseAnonKey!) : null;
 
+type ConnectedService = {
+  id: string;
+  name: string;
+  description: string;
+  status: string;
+  uiUrl: string;
+  mcpUrl?: string;
+};
+
 const services = [
   "CRM",
   "Analytics",
@@ -41,7 +46,7 @@ const services = [
   "Inventory",
 ];
 
-const connectedServices = [
+const connectedServices: ConnectedService[] = [
   {
     id: "openseo",
     name: "OpenSEO",
@@ -50,17 +55,13 @@ const connectedServices = [
     uiUrl: "https://openseo.spaces.community",
     mcpUrl: "https://openseo.spaces.community/mcp",
   },
-];
-
-const siteMap = [
-  { path: "/", label: "Главная", description: "Лендинг проекта Spaces и описание платформы." },
-  { path: "/login", label: "Вход", description: "Email/password и Google OAuth вход в Spaces." },
-  { path: "/register", label: "Регистрация", description: "Создание единого аккаунта Spaces." },
-  { path: "/forgot", label: "Восстановление пароля", description: "Запрос письма для сброса пароля." },
-  { path: "/reset-password", label: "Новый пароль", description: "Экран установки нового пароля из письма." },
-  { path: "/account", label: "Аккаунт", description: "Личный кабинет, сервисы и MCP-доступ." },
-  { path: "/privacy", label: "Privacy Policy", description: "Политика обработки данных Spaces." },
-  { path: "/terms", label: "Terms of Service", description: "Правила использования Spaces." },
+  {
+    id: "outline",
+    name: "Outline",
+    description: "База знаний Spaces, проектная документация и внутренние инструкции.",
+    status: "Docs ready",
+    uiUrl: "https://outline.spaces.community/",
+  },
 ];
 
 function App() {
@@ -89,6 +90,29 @@ function App() {
 }
 
 function TopBar() {
+  const [session, setSession] = React.useState<Session | null>(null);
+
+  React.useEffect(() => {
+    if (!supabase) {
+      return;
+    }
+
+    supabase.auth.getSession().then(({ data }) => setSession(data.session));
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, nextSession) => setSession(nextSession));
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const userName =
+    session?.user.user_metadata?.name ||
+    session?.user.user_metadata?.full_name ||
+    session?.user.email ||
+    "Пользователь";
+  const avatarUrl = session?.user.user_metadata?.avatar_url as string | undefined;
+  const initials = userName.slice(0, 1).toUpperCase();
+
   return (
     <header className="topbar">
       <a className="brand" href="/" aria-label="Spaces home">
@@ -97,18 +121,26 @@ function TopBar() {
         </span>
         <span>Spaces</span>
       </a>
-      <nav aria-label="Главная навигация">
-        <a href="/#platform">Платформа</a>
-        <a href="/#ai">AI</a>
-        <a href="/#security">Доступ</a>
-      </nav>
       <div className="topActions">
-        <a className="ghostButton" href="/login">
-          Войти
-        </a>
-        <a className="solidButton" href="/register">
-          Начать
-        </a>
+        {session ? (
+          <>
+            <span className="userAvatar" aria-label={userName}>
+              {avatarUrl ? <img src={avatarUrl} alt="" /> : initials}
+            </span>
+            <a className="outlineButton shadowButton" href="/account">
+              Профиль
+            </a>
+          </>
+        ) : (
+          <>
+            <a className="ghostButton" href="/login">
+              Войти
+            </a>
+            <a className="solidButton" href="/register">
+              Начать
+            </a>
+          </>
+        )}
       </div>
     </header>
   );
@@ -169,122 +201,7 @@ function Landing() {
           </div>
         </div>
       </section>
-
-      <section className="purposeSection" aria-label="What Spaces does">
-        <span className="sectionKicker">what spaces does</span>
-        <h2>Spaces is an account and AI control hub for connected project services.</h2>
-        <p>
-          Users sign in to Spaces with email or Google, manage one shared account, connect services on Spaces
-          subdomains, and use an AI assistant to find information, check service state, and perform permitted actions.
-        </p>
-      </section>
-
-      <SiteMapSection />
-
-      <section className="sectionBand" id="platform">
-        <div className="sectionIntro">
-          <span className="sectionKicker">архитектура</span>
-          <h2>Главная точка входа для всех будущих сервисов.</h2>
-        </div>
-        <div className="featureGrid">
-          <FeatureCard icon={<Globe2 />} title="Сервисы на субдоменах">
-            Каждый продукт живет отдельно, но использует общий аккаунт, роли и навигацию Spaces.
-          </FeatureCard>
-          <FeatureCard icon={<Fingerprint />} title="Одна идентичность">
-            Пользователь регистрируется один раз и получает доступ ко всем разрешенным инструментам.
-          </FeatureCard>
-          <FeatureCard icon={<Network />} title="Общий контекст">
-            Сервисы передают данные в управляемый слой знаний, чтобы AI видел актуальную картину.
-          </FeatureCard>
-        </div>
-      </section>
-
-      <section className="splitSection" id="ai">
-        <div>
-          <span className="sectionKicker">AI control layer</span>
-          <h2>Чат не просто отвечает. Он выполняет действия в рамках прав аккаунта.</h2>
-          <p>
-            Spaces проектируется как операционная панель: пользователь пишет задачу обычным языком, а AI
-            подбирает нужный сервис, проверяет данные и предлагает следующий шаг.
-          </p>
-        </div>
-        <div className="steps">
-          <Step number="01" title="Понимает запрос" />
-          <Step number="02" title="Находит данные через поиск и сервисные API" />
-          <Step number="03" title="Проверяет права пользователя" />
-          <Step number="04" title="Готовит действие или результат" />
-        </div>
-      </section>
-
-      <section className="securitySection" id="security">
-        <div className="securityCopy">
-          <span className="sectionKicker">security first</span>
-          <h2>Доступ AI будет ограничен правами пользователя.</h2>
-          <p>
-            Основные данные аккаунтов, ролей, оплат и состояния сервисов должны храниться в структурной базе.
-            Векторная база используется для семантического поиска, базы знаний и retrieval.
-          </p>
-        </div>
-        <div className="securityList">
-          <div>
-            <ShieldCheck size={20} />
-            <span>Ролевой доступ</span>
-          </div>
-          <div>
-            <LockKeyhole size={20} />
-            <span>Контроль токенов и сессий</span>
-          </div>
-          <div>
-            <Layers3 size={20} />
-            <span>Разделение данных и AI-индекса</span>
-          </div>
-        </div>
-      </section>
     </>
-  );
-}
-
-function SiteMapSection() {
-  return (
-    <section className="sitemapSection" aria-label="Карта сайта Spaces">
-      <div className="sectionIntro">
-        <span className="sectionKicker">site map</span>
-        <h2>Карта созданных страниц Spaces.</h2>
-        <p>OpenSEO не включен: это отдельный сервис на поддомене, а не страница главного сайта.</p>
-      </div>
-      <div className="sitemapGrid">
-        {siteMap.map((page) => (
-          <a className="sitemapCard" href={page.path} key={page.path}>
-            <div>
-              <Map size={18} />
-              <strong>{page.label}</strong>
-            </div>
-            <code>{page.path}</code>
-            <p>{page.description}</p>
-          </a>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function FeatureCard({ icon, title, children }: { icon: React.ReactNode; title: string; children: React.ReactNode }) {
-  return (
-    <article className="featureCard">
-      <div className="featureIcon">{icon}</div>
-      <h3>{title}</h3>
-      <p>{children}</p>
-    </article>
-  );
-}
-
-function Step({ number, title }: { number: string; title: string }) {
-  return (
-    <div className="step">
-      <span>{number}</span>
-      <strong>{title}</strong>
-      <ChevronRight size={18} />
-    </div>
   );
 }
 
@@ -536,16 +453,18 @@ function ServiceDirectory({ session }: { session: Session | null }) {
               <button className="outlineButton" type="button" onClick={() => launchService(service.uiUrl)}>
                 Открыть
                 <ExternalLink size={16} />
-              </button>
-            ) : (
-              <a className="outlineButton" href="/login">
+            </button>
+          ) : (
+            <a className="outlineButton" href="/login">
                 Открыть
                 <ExternalLink size={16} />
               </a>
             )}
-            <a className="ghostButton" href={service.mcpUrl}>
-              MCP
-            </a>
+            {service.mcpUrl && (
+              <a className="ghostButton" href={service.mcpUrl}>
+                MCP
+              </a>
+            )}
           </div>
         </article>
       ))}
