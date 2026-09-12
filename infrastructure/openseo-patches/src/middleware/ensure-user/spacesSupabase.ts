@@ -144,3 +144,36 @@ export async function resolveSpacesSupabaseContext(headers: Headers): Promise<En
     role: project.role,
   });
 }
+
+export async function resolveSpacesMcpContext(headers: Headers): Promise<EnsuredUserContext> {
+  const token = getBearerToken(headers);
+  if (!token?.startsWith("spc_")) return resolveSpacesSupabaseContext(headers);
+
+  const supabaseUrl = await getSpacesSupabaseUrl();
+  const anonKey = await getOptionalEnvValue("SUPABASE_ANON_KEY");
+  const serviceSecret = await getOptionalEnvValue("SPACES_SERVICE_SECRET");
+  if (!anonKey || !serviceSecret) throw new AppError("AUTH_CONFIG_MISSING", "Missing Spaces MCP configuration.");
+  const response = await fetch(`${supabaseUrl}/rest/v1/rpc/exchange_mcp_credential`, {
+    method: "POST",
+    headers: { apikey: anonKey, "content-type": "application/json" },
+    body: JSON.stringify({ p_token: token, p_service_slug: "openseo", p_service_secret: serviceSecret }),
+  });
+  if (!response.ok) throw new AppError("UNAUTHENTICATED");
+  const context = await response.json() as {
+    user_id?: string;
+    email?: string;
+    project_id?: string;
+    project_name?: string;
+    project_slug?: string;
+    role?: "owner" | "member";
+  };
+  if (!context.user_id || !context.email || !context.project_id || !context.project_name || !context.project_slug || !context.role) {
+    throw new AppError("UNAUTHENTICATED");
+  }
+  return resolveDelegatedProjectContext(`spaces:${context.user_id}`, context.email, {
+    id: context.project_id,
+    name: context.project_name,
+    slug: context.project_slug,
+    role: context.role,
+  });
+}

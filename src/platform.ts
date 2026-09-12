@@ -80,12 +80,24 @@ export type HarnessVersion = {
   test_report: Record<string, unknown> | null;
 };
 
+export type McpCredential = {
+  id: string;
+  project_id: string;
+  name: string;
+  scopes: string[];
+  expires_at: string | null;
+  last_used_at: string | null;
+  revoked_at: string | null;
+  created_at: string;
+};
+
 export type Workspace = {
   profile: Profile;
   account: Account;
   projects: Project[];
   services: Service[];
   projectServices: ProjectService[];
+  mcpCredentials: McpCredential[];
   harness: HarnessState | null;
   harnessVersion: HarnessVersion | null;
 };
@@ -191,10 +203,13 @@ export async function loadWorkspace(session: Session): Promise<Workspace> {
       ? profile.active_project_id
       : activeProjects[0]?.id ?? null;
   const projectIds = projects.map((project) => project.id);
-  const projectServicesResult = projectIds.length
-    ? await client.from("project_services").select("*").in("project_id", projectIds)
-    : { data: [], error: null };
-  if (projectServicesResult.error) throw projectServicesResult.error;
+  const [projectServicesResult, mcpCredentialsResult] = projectIds.length
+    ? await Promise.all([
+        client.from("project_services").select("*").in("project_id", projectIds),
+        client.from("mcp_credentials").select("id,project_id,name,scopes,expires_at,last_used_at,revoked_at,created_at").in("project_id", projectIds).order("created_at", { ascending: false }),
+      ])
+    : [{ data: [], error: null }, { data: [], error: null }];
+  if (projectServicesResult.error || mcpCredentialsResult.error) throw projectServicesResult.error || mcpCredentialsResult.error;
 
   const harnessResult = activeProjectId
     ? await client.from("project_harness_settings").select("*").eq("project_id", activeProjectId).maybeSingle()
@@ -212,6 +227,7 @@ export async function loadWorkspace(session: Session): Promise<Workspace> {
     projects,
     services: (servicesResult.data ?? []) as Service[],
     projectServices: (projectServicesResult.data ?? []) as ProjectService[],
+    mcpCredentials: (mcpCredentialsResult.data ?? []) as McpCredential[],
     harness,
     harnessVersion: harnessVersionResult.data as HarnessVersion | null,
   };
@@ -273,6 +289,22 @@ export async function createServiceTicket(projectId: string, serviceSlug: string
   if (error) throw error;
   if (!data) throw new Error("Не удалось создать билет входа");
   return data as string;
+}
+
+export async function createMcpCredential(projectId: string, name: string, expiresAt: string | null) {
+  const { data, error } = await requireClient().rpc("create_mcp_credential", {
+    p_project_id: projectId,
+    p_name: name,
+    p_scopes: ["openseo:*"],
+    p_expires_at: expiresAt,
+  });
+  if (error) throw error;
+  return data as { id: string; name: string; token: string; scopes: string[]; expires_at: string | null; created_at: string };
+}
+
+export async function revokeMcpCredential(credentialId: string) {
+  const { error } = await requireClient().rpc("revoke_mcp_credential", { p_credential_id: credentialId });
+  if (error) throw error;
 }
 
 export async function saveHarnessUserConfig(projectId: string, config: Record<string, unknown>) {

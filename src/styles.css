@@ -199,7 +199,20 @@ code { padding: 3px 6px; border: 1px solid var(--border); border-radius: 4px; ba
 .switch input:checked + span::after { transform: translateX(14px); }
 .fieldError { display: block; margin-top: 5px; color: var(--danger); }
 
-.harnessPanel { margin-top: 28px; padding-top: 28px; border-top: 1px solid var(--border); }
+.mcpPanel, .harnessPanel { margin-top: 28px; padding-top: 28px; border-top: 1px solid var(--border); }
+.mcpEndpoint { display: grid; grid-template-columns: auto minmax(0,1fr) auto; gap: 8px; align-items: center; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius); font-size: .8125rem; }
+.mcpEndpoint > span { color: var(--muted-foreground); font-weight: 600; }
+.mcpEndpoint code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mcpCreate { display: grid; grid-template-columns: minmax(220px,1fr) 150px auto; gap: 8px; align-items: end; margin-top: 10px; }
+.mcpCreate label { display: grid; gap: 7px; font-size: .8125rem; font-weight: 600; }
+.mcpCreate select { min-height: 40px; padding: 0 10px; border: 1px solid var(--input); border-radius: var(--radius); background: #fff; }
+.secretReveal { display: grid; grid-template-columns: minmax(180px,.55fr) minmax(220px,1fr) auto auto; gap: 8px; align-items: center; margin-top: 10px; padding: 12px; border: 1px solid var(--foreground); border-radius: var(--radius); }
+.secretReveal p { margin: 3px 0 0; font-size: .75rem; }
+.secretReveal code { overflow-wrap: anywhere; user-select: all; }
+.credentialList { display: grid; gap: 6px; margin-top: 10px; }
+.credentialRow { display: grid; grid-template-columns: minmax(0,1fr) auto auto; gap: 10px; align-items: center; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+.credentialRow > div { display: grid; gap: 3px; min-width: 0; }
+.credentialRow small { overflow: hidden; color: var(--muted-foreground); text-overflow: ellipsis; white-space: nowrap; }
 .harnessGrid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; }
 .harnessActions { display: flex; justify-content: flex-end; margin-top: 12px; }
 .updateNotice { align-items: center; justify-content: space-between; margin-bottom: 12px; }
@@ -276,6 +289,8 @@ legend { padding: 0 4px; font-size: .8125rem; font-weight: 600; }
   .serviceRow { grid-template-columns: 1fr; }
   .serviceActions { justify-content: flex-start; flex-wrap: wrap; }
   .harnessGrid { grid-template-columns: 1fr; }
+  .mcpCreate, .secretReveal { grid-template-columns: 1fr; align-items: stretch; }
+  .secretReveal .iconButton { justify-self: end; }
   .qrBlock { grid-template-columns: 1fr; }
   .limitRow { grid-template-columns: 1fr 1fr; }
   .limitRow > div { grid-column: 1 / -1; }

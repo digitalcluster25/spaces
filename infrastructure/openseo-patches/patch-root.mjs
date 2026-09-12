@@ -55,3 +55,18 @@ if (!source.includes("function SpacesTenantFrame()")) {
   source = source.replace(bootstrapMarker, "                <SpacesTenantFrame />\n                <PostHogBootstrap />");
   fs.writeFileSync(file, source);
 }
+
+const transportFile = "/app/src/server/mcp/transport.ts";
+let transport = fs.readFileSync(transportFile, "utf8");
+transport = transport.replace(
+  'import { resolveSpacesSupabaseContext } from "@/middleware/ensure-user/spacesSupabase";',
+  'import { resolveSpacesMcpContext } from "@/middleware/ensure-user/spacesSupabase";',
+);
+transport = transport.replace(
+  "? await resolveSpacesSupabaseContext(request.headers)",
+  "? await resolveSpacesMcpContext(request.headers)",
+);
+if (!transport.includes("resolveSpacesMcpContext(request.headers)")) {
+  throw new Error("OpenSEO MCP auth marker not found");
+}
+fs.writeFileSync(transportFile, transport);

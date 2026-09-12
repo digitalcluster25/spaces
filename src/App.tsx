@@ -8,6 +8,7 @@ import {
   Check,
   ChevronDown,
   Command,
+  Copy,
   ExternalLink,
   Fingerprint,
   KeyRound,
@@ -21,6 +22,7 @@ import {
   Settings2,
   ShieldCheck,
   Sparkles,
+  Trash2,
   X,
   Activity,
   Database,
@@ -38,10 +40,12 @@ import {
   archiveProject,
   authReady,
   createProject,
+  createMcpCredential,
   createServiceTicket,
   loadWorkspace,
   loadAdminData,
   restoreProject,
+  revokeMcpCredential,
   saveHarnessUserConfig,
   setActiveProjectForTab,
   setServiceEnabled,
@@ -744,14 +748,87 @@ function ProjectWorkspace({ session, project, workspace, refresh }: { session: S
               <div className="serviceActions">
                 <label className="switch"><input type="checkbox" checked={Boolean(enabled)} onChange={(event) => void toggle(service, event.target.checked)} /><span /></label>
                 {connection?.status === "ready" ? <a className="button buttonOutline" href={serviceLaunchHref(project.id, service.slug)} target="_blank" rel="noopener noreferrer">Открыть<ExternalLink size={15} /></a> : <button className="button buttonOutline" type="button" disabled>Открыть<ExternalLink size={15} /></button>}
-                {service.mcp_url && connection?.status === "ready" && <a className="button buttonGhost" href={service.mcp_url} target="_blank" rel="noreferrer">MCP<ExternalLink size={14} /></a>}
+                {service.mcp_url && connection?.status === "ready" && <a className="button buttonGhost" href="#mcp-access">MCP<KeyRound size={14} /></a>}
               </div>
             </article>
           );
         })}
       </div>
+      <McpPanel project={project} workspace={workspace} refresh={refresh} />
       <HarnessPanel project={project} workspace={workspace} refresh={refresh} />
     </div>
+  );
+}
+
+function McpPanel({ project, workspace, refresh }: { project: Project; workspace: Workspace; refresh: () => Promise<void> }) {
+  const credentials = workspace.mcpCredentials.filter((credential) => credential.project_id === project.id);
+  const [name, setName] = React.useState("");
+  const [lifetime, setLifetime] = React.useState("90");
+  const [revealed, setRevealed] = React.useState<{ token: string; name: string } | null>(null);
+  const [revokeTarget, setRevokeTarget] = React.useState<string | null>(null);
+  const [working, setWorking] = React.useState(false);
+  const [message, setMessage] = React.useState("");
+
+  async function create() {
+    setWorking(true);
+    setMessage("");
+    try {
+      const days = Number(lifetime);
+      const expiresAt = lifetime === "permanent" ? null : new Date(Date.now() + days * 86_400_000).toISOString();
+      const credential = await createMcpCredential(project.id, name, expiresAt);
+      setRevealed({ token: credential.token, name: credential.name });
+      setName("");
+      await refresh();
+    } catch (cause) {
+      setMessage(cause instanceof Error ? cause.message : "Не удалось создать MCP-ключ");
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  async function revoke() {
+    if (!revokeTarget) return;
+    setWorking(true);
+    setMessage("");
+    try {
+      await revokeMcpCredential(revokeTarget);
+      setRevokeTarget(null);
+      await refresh();
+    } catch (cause) {
+      setMessage(cause instanceof Error ? cause.message : "Не удалось отозвать MCP-ключ");
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  async function copy(value: string) {
+    await navigator.clipboard.writeText(value);
+    setMessage("Скопировано.");
+  }
+
+  return (
+    <section className="mcpPanel" id="mcp-access">
+      <div className="sectionHeader">
+        <div><span className="sectionKicker"><KeyRound size={14} />agent access</span><h2>MCP-доступ проекта</h2><p>Отдельный отзывной ключ для каждого внешнего агента. Ключ даёт доступ только к OpenSEO этого проекта.</p></div>
+      </div>
+      <div className="mcpEndpoint"><span>Endpoint</span><code>https://openseo.spaces.community/mcp</code><button className="iconButton" type="button" title="Копировать endpoint" onClick={() => void copy("https://openseo.spaces.community/mcp")}><Copy size={15} /></button></div>
+      <div className="mcpCreate">
+        <label>Название ключа<input value={name} maxLength={80} placeholder="Например, Codex на MacBook" onChange={(event) => setName(event.target.value)} /></label>
+        <label>Срок действия<select value={lifetime} onChange={(event) => setLifetime(event.target.value)}><option value="30">30 дней</option><option value="90">90 дней</option><option value="365">1 год</option><option value="permanent">Без срока</option></select></label>
+        <button className="button buttonPrimary" type="button" disabled={working || !name.trim()} onClick={() => void create()}>Создать ключ</button>
+      </div>
+      {revealed && <div className="secretReveal"><div><strong>{revealed.name}</strong><p>Сохраните ключ сейчас. После закрытия он больше не будет показан.</p></div><code>{revealed.token}</code><button className="button buttonOutline" type="button" onClick={() => void copy(revealed.token)}><Copy size={15} />Копировать</button><button className="iconButton" type="button" title="Скрыть ключ" onClick={() => setRevealed(null)}><X size={15} /></button></div>}
+      {message && <div className="notice">{message}</div>}
+      <div className="credentialList">
+        {credentials.map((credential) => {
+          const expired = Boolean(credential.expires_at && new Date(credential.expires_at).getTime() <= Date.now());
+          const active = !credential.revoked_at && !expired;
+          return <div className="credentialRow" key={credential.id}><div><strong>{credential.name}</strong><small>{active ? "Активен" : credential.revoked_at ? "Отозван" : "Истёк"} · {credential.expires_at ? `до ${new Date(credential.expires_at).toLocaleDateString("ru")}` : "без срока"}{credential.last_used_at ? ` · использован ${new Date(credential.last_used_at).toLocaleString("ru")}` : " · ещё не использован"}</small></div><code>openseo:*</code>{active && <button className="iconButton" type="button" title="Отозвать ключ" onClick={() => setRevokeTarget(credential.id)}><Trash2 size={15} /></button>}</div>;
+        })}
+        {!credentials.length && <div className="emptyState">У проекта пока нет MCP-ключей.</div>}
+      </div>
+      {revokeTarget && <ConfirmDialog title="Ты уверен, босс?" text="Ключ немедленно перестанет работать у подключённого агента." confirm="Отозвать ключ" working={working} onClose={() => setRevokeTarget(null)} onConfirm={() => void revoke()} />}
+    </section>
   );
 }
 
