@@ -10,6 +10,12 @@ const teamSubdomain = process.env.SPACES_OUTLINE_TEAM_SUBDOMAIN || "spaces";
 const serviceSecret = process.env.SPACES_SERVICE_SECRET;
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
+function isAuthorized(req) {
+  const provided = String(req.headers.authorization || "").replace(/^Bearer\s+/i, "");
+  if (!serviceSecret || provided.length !== serviceSecret.length) return false;
+  return crypto.timingSafeEqual(Buffer.from(provided), Buffer.from(serviceSecret));
+}
+
 function parseCookies(header = "") {
   return Object.fromEntries(
     header
@@ -62,23 +68,53 @@ async function exchangeTicket(ticket) {
   return response.json();
 }
 
-async function findOrCreateOutlineUser(claims) {
+function projectSubdomain(projectSlug, projectId) {
+  if (projectSlug === "commercial-projects") return teamSubdomain;
+  const slug = String(projectSlug || "project").replace(/[^a-z0-9-]/g, "-").slice(0, 70);
+  return `spaces-${slug}-${String(projectId).replace(/-/g, "").slice(0, 8)}`;
+}
+
+async function ensureOutlineTeam(client, project) {
+  const subdomain = projectSubdomain(project.slug, project.id);
+  const existing = await client.query(
+    'select id from teams where subdomain = $1 limit 1',
+    [subdomain],
+  );
+  if (existing.rowCount) {
+    await client.query(
+      'update teams set name = $1, "deletedAt" = null, "suspendedAt" = null, "updatedAt" = now(), "signupQueryParams" = coalesce("signupQueryParams", \'{}\'::jsonb) || $2::jsonb where id = $3',
+      [project.name, JSON.stringify({ spaces_project_id: project.id }), existing.rows[0].id],
+    );
+    return existing.rows[0].id;
+  }
+
+  const teamId = crypto.randomUUID();
+  await client.query(
+    `insert into teams
+      (id, name, "createdAt", "updatedAt", subdomain, sharing, "documentEmbeds", "guestSignin",
+       "defaultUserRole", "memberCollectionCreate", "inviteRequired", "memberTeamCreate", "passkeysEnabled", "signupQueryParams")
+     values ($1, $2, now(), now(), $3, true, true, false, 'member', true, false, true, false, $4::jsonb)`,
+    [teamId, project.name, subdomain, JSON.stringify({ spaces_project_id: project.id })],
+  );
+  return teamId;
+}
+
+async function findOrCreateOutlineUser(claims, providedTeamId) {
   const email = String(claims.email || "").toLowerCase();
   if (!email) throw new Error("Spaces user has no email");
 
   const name = claims.display_name || email.split("@")[0];
   const avatarUrl = claims.avatar_url || null;
+  const outlineRole = claims.role === "owner" ? "admin" : "member";
   const client = await pool.connect();
 
   try {
     await client.query("begin");
-    const teamResult = await client.query(
-      'select id from teams where subdomain = $1 and "deletedAt" is null limit 1',
-      [teamSubdomain],
-    );
-    if (!teamResult.rowCount) throw new Error(`Outline team ${teamSubdomain} not found`);
-
-    const teamId = teamResult.rows[0].id;
+    const teamId = providedTeamId || await ensureOutlineTeam(client, {
+      id: claims.project_id,
+      name: claims.project_name,
+      slug: claims.project_slug,
+    });
     const existing = await client.query(
       'select id, "jwtSecret" from users where lower(email) = $1 and "teamId" = $2 and "deletedAt" is null limit 1',
       [email, teamId],
@@ -97,20 +133,64 @@ async function findOrCreateOutlineUser(claims) {
         await client.query(
           `insert into users
             (id, email, name, "jwtSecret", "createdAt", "updatedAt", "teamId", "avatarUrl", "notificationSettings", role)
-           values ($1, $2, $3, $4, now(), now(), $5, $6, '{}'::jsonb, 'member')
+           values ($1, $2, $3, $4, now(), now(), $5, $6, '{}'::jsonb, $7)
            returning id`,
-          [crypto.randomUUID(), email, name, encryptOutlineValue(jwtSecret), teamId, avatarUrl],
+          [crypto.randomUUID(), email, name, encryptOutlineValue(jwtSecret), teamId, avatarUrl, outlineRole],
         )
       ).rows[0];
     } else {
       await client.query(
-        'update users set name = $1, "avatarUrl" = coalesce($2, "avatarUrl"), "jwtSecret" = $3, "lastActiveAt" = now(), "lastSignedInAt" = now(), "updatedAt" = now() where id = $4',
-        [name, avatarUrl, encryptOutlineValue(jwtSecret), user.id],
+        'update users set name = $1, "avatarUrl" = coalesce($2, "avatarUrl"), "jwtSecret" = $3, role = $4, "lastActiveAt" = now(), "lastSignedInAt" = now(), "updatedAt" = now() where id = $5',
+        [name, avatarUrl, encryptOutlineValue(jwtSecret), outlineRole, user.id],
       );
     }
 
     await client.query("commit");
     return { id: user.id, jwtSecret };
+  } catch (error) {
+    await client.query("rollback");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+async function provisionOutline(input) {
+  const project = input.project || {};
+  if (!/^[0-9a-f-]{36}$/i.test(String(project.id || "")) || !project.name || !project.slug) {
+    throw new Error("Invalid Spaces project");
+  }
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    const subdomain = projectSubdomain(project.slug, project.id);
+    const team = await client.query('select id from teams where subdomain = $1 limit 1', [subdomain]);
+    let teamId = team.rows[0]?.id;
+
+    if (["provision", "resume", "restore"].includes(input.operation)) {
+      teamId = await ensureOutlineTeam(client, project);
+    } else if (!teamId) {
+      throw new Error("Outline tenant not found");
+    } else if (input.operation === "suspend") {
+      await client.query('update teams set "suspendedAt" = now(), "updatedAt" = now() where id = $1', [teamId]);
+    } else if (input.operation === "archive") {
+      await client.query('update teams set "deletedAt" = now(), "updatedAt" = now() where id = $1', [teamId]);
+    } else if (input.operation === "delete") {
+      await client.query('delete from teams where id = $1', [teamId]);
+    } else {
+      throw new Error("Unsupported provisioning operation");
+    }
+    await client.query("commit");
+
+    if (["provision", "resume", "restore"].includes(input.operation) && input.owner?.email) {
+      await findOrCreateOutlineUser({
+        email: input.owner.email,
+        display_name: input.owner.displayName,
+        avatar_url: null,
+        role: "owner",
+      }, teamId);
+    }
+    return { externalTenantId: teamId };
   } catch (error) {
     await client.query("rollback");
     throw error;
@@ -170,6 +250,15 @@ const server = http.createServer(async (req, res) => {
         "Content-Security-Policy": "default-src 'none'; script-src 'unsafe-inline'; connect-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'",
       });
       return res.end(ticketPage());
+    }
+    if (url.pathname === "/spaces-internal/provision" && req.method === "POST") {
+      if (!isAuthorized(req)) {
+        res.writeHead(401, { "Content-Type": "application/json; charset=utf-8" });
+        return res.end(JSON.stringify({ error: "Unauthorized" }));
+      }
+      const result = await provisionOutline(await readJson(req));
+      res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+      return res.end(JSON.stringify(result));
     }
     if (url.pathname !== "/spaces-sso/exchange" || req.method !== "POST") return redirect(res, "/home", 404);
 

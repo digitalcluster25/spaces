@@ -16,3 +16,14 @@ services:
       - "traefik.http.routers.superadminko.tls.certresolver=letsencrypt"
       - "traefik.http.routers.superadminko.service=spaces"
       - "traefik.http.services.spaces.loadbalancer.server.port=80"
+  provisioner:
+    image: node:20-alpine
+    container_name: spaces-provisioner
+    restart: unless-stopped
+    env_file:
+      - /opt/spaces/provisioner.env
+    environment:
+      - POLL_INTERVAL_MS=10000
+    command: ["node", "/app/server.js"]
+    volumes:
+      - /opt/spaces/repo/infrastructure/provisioner/server.js:/app/server.js:ro

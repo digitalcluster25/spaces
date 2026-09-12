@@ -1,0 +1,10 @@
+services:
+  spaces-sso:
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.outline-spaces-sso.rule=Host(`outline.spaces.community`) && (PathPrefix(`/spaces-sso`) || PathPrefix(`/spaces-internal`))"
+      - "traefik.http.routers.outline-spaces-sso.entrypoints=websecure"
+      - "traefik.http.routers.outline-spaces-sso.priority=10000"
+      - "traefik.http.routers.outline-spaces-sso.tls.certresolver=letsencrypt"
+      - "traefik.http.services.outline-spaces-sso.loadbalancer.server.port=3000"
+      - "traefik.docker.network=outline_default"

@@ -1,9 +1,23 @@
 const http = require("http");
+const crypto = require("crypto");
 
 const port = Number(process.env.PORT || 3000);
 const supabaseUrl = process.env.SPACES_SUPABASE_URL || process.env.SUPABASE_URL;
 const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
 const serviceSecret = process.env.SPACES_SERVICE_SECRET;
+
+function signProjectContext(claims) {
+  const payload = Buffer.from(JSON.stringify({
+    projectId: claims.project_id,
+    projectName: claims.project_name,
+    projectSlug: claims.project_slug,
+    userId: claims.user_id,
+    role: claims.role,
+    exp: Date.now() + 55 * 60 * 1000,
+  })).toString("base64url");
+  const signature = crypto.createHmac("sha256", serviceSecret).update(payload).digest("base64url");
+  return `${payload}.${signature}`;
+}
 
 function safeNext(value) {
   if (!value || !value.startsWith("/") || value.startsWith("//")) return "/";
@@ -80,9 +94,10 @@ const server = http.createServer(async (req, res) => {
     const input = await readJson(req);
     const claims = await exchangeTicket(String(input.ticket || ""));
     if (!claims.access_token || !claims.project_id) throw new Error("Incomplete Spaces session");
+    const projectContext = signProjectContext(claims);
     const cookies = [
       `spaces_access_token=${claims.access_token}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=3300`,
-      `spaces_project_id=${claims.project_id}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=3300`,
+      `spaces_project_context=${projectContext}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=3300`,
     ];
     res.writeHead(200, {
       "Content-Type": "application/json; charset=utf-8",

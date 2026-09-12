@@ -9,7 +9,7 @@ http:
         certResolver: letsencrypt
       service: outline-spaces-sso
     outline-spaces-sso:
-      rule: "Host(`outline.spaces.community`) && PathPrefix(`/spaces-sso`)"
+      rule: "Host(`outline.spaces.community`) && (PathPrefix(`/spaces-sso`) || PathPrefix(`/spaces-internal`))"
       entryPoints:
         - websecure
       priority: 100000
