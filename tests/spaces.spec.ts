@@ -36,3 +36,10 @@ test("auth screens are available", async ({ page }) => {
   await page.goto("/terms");
   await expect(page.getByRole("heading", { name: "Terms of Service" })).toBeVisible();
 });
+
+test("superadmin control plane is closed without authentication", async ({ page }) => {
+  await page.goto("/superadmin");
+  await expect(page.getByRole("heading", { name: "Нужно войти" })).toBeVisible();
+  await expect(page.getByText("Суперадминка доступна только владельцу Spaces.")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Superadminko" })).toHaveCount(0);
+});

@@ -29,5 +29,7 @@ if [ ! -d node_modules ]; then
 fi
 npm run build
 rsync -a --delete dist/ "$site_dir/"
+install -m 0644 infrastructure/spaces-site/docker-compose.yml /opt/spaces/docker-compose.yml
+install -m 0644 infrastructure/spaces-site/nginx.conf /opt/spaces/nginx.conf
 docker compose -f /opt/spaces/docker-compose.yml up -d
 printf '%s\n' "$remote" > "$revision_file"

@@ -1,0 +1,18 @@
+services:
+  site:
+    image: nginx:alpine
+    container_name: spaces-site
+    restart: unless-stopped
+    volumes:
+      - /opt/spaces/site:/usr/share/nginx/html:ro
+      - /opt/spaces/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.spaces.rule=Host(`spaces.community`)"
+      - "traefik.http.routers.spaces.entrypoints=websecure"
+      - "traefik.http.routers.spaces.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.superadminko.rule=Host(`superadminko.spaces.community`)"
+      - "traefik.http.routers.superadminko.entrypoints=websecure"
+      - "traefik.http.routers.superadminko.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.superadminko.service=spaces"
+      - "traefik.http.services.spaces.loadbalancer.server.port=80"
