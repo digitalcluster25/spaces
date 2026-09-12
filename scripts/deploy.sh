@@ -54,7 +54,7 @@ if [ "$(cat /opt/openseo/spaces-patch-revision 2>/dev/null || true)" != "$opense
   if ! docker image inspect openseo-spaces:base-20260912 >/dev/null 2>&1; then
     docker tag openseo-spaces:latest openseo-spaces:base-20260912
   fi
-  docker build -f infrastructure/openseo-patches/Dockerfile -t openseo-spaces:latest .
+  docker build --secret id=openseo_env,src=/opt/openseo/.env -f infrastructure/openseo-patches/Dockerfile -t openseo-spaces:latest .
   docker compose -f /opt/openseo/docker-compose.yml -f /opt/openseo/docker-compose.sso.yml up -d open-seo
   printf '%s\n' "$openseo_patch_hash" > /opt/openseo/spaces-patch-revision
 fi
