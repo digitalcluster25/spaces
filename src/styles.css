@@ -173,6 +173,8 @@ code { padding: 3px 6px; border: 1px solid var(--border); border-radius: 4px; ba
 
 .harnessPanel { margin-top: 28px; padding-top: 28px; border-top: 1px solid var(--border); }
 .harnessGrid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; }
+.harnessActions { display: flex; justify-content: flex-end; margin-top: 12px; }
+.updateNotice { align-items: center; justify-content: space-between; margin-bottom: 12px; }
 .harnessGrid label, .formGrid label, .authForm label { display: grid; gap: 7px; font-size: .8125rem; font-weight: 600; }
 input, textarea { width: 100%; border: 1px solid var(--input); border-radius: var(--radius); background: #fff; color: var(--foreground); outline: 0; }
 input { min-height: 40px; padding: 0 11px; }
@@ -192,6 +194,18 @@ legend { padding: 0 4px; font-size: .8125rem; font-weight: 600; }
 .checkRow input { width: 16px; min-height: 16px; accent-color: var(--primary); }
 .dialogActions { justify-content: flex-end; margin-top: 20px; }
 .confirmDialog { width: min(440px,100%); }
+
+.securityGate { display: grid; place-items: center; min-height: 100vh; padding: 24px 16px; background: var(--muted); }
+.securityCard { display: grid; gap: 18px; width: min(520px,100%); padding: 24px; border: 1px solid var(--border); border-radius: var(--radius); background: #fff; box-shadow: 0 8px 24px rgba(0,0,0,.08); }
+.securityCard h1 { margin: 7px 0 5px; }
+.securityCard p { margin-bottom: 0; }
+.securityIcon { display: grid; place-items: center; width: 40px; height: 40px; border-radius: var(--radius); background: var(--primary); color: var(--primary-foreground); }
+.mfaForm { display: grid; gap: 14px; }
+.mfaForm > label { display: grid; gap: 7px; font-size: .8125rem; font-weight: 600; }
+.qrBlock { display: grid; grid-template-columns: 160px 1fr; gap: 16px; align-items: center; padding: 14px; border: 1px solid var(--border); border-radius: var(--radius); }
+.qrBlock img { width: 160px; height: 160px; }
+.qrBlock p { margin: 5px 0 9px; font-size: .8125rem; }
+.qrBlock code { overflow-wrap: anywhere; }
 
 .authShell { display: grid; grid-template-columns: minmax(0,.8fr) minmax(320px,440px); gap: clamp(36px,8vw,120px); align-items: center; min-height: calc(100vh - 60px); padding: 56px clamp(16px,7vw,110px); }
 .authAside { max-width: 620px; }
@@ -230,6 +244,7 @@ legend { padding: 0 4px; font-size: .8125rem; font-weight: 600; }
   .serviceRow { grid-template-columns: 1fr; }
   .serviceActions { justify-content: flex-start; flex-wrap: wrap; }
   .harnessGrid { grid-template-columns: 1fr; }
+  .qrBlock { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 520px) {

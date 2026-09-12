@@ -71,6 +71,14 @@ export type HarnessState = {
   offered_version_id: string | null;
 };
 
+export type HarnessVersion = {
+  id: string;
+  version: number;
+  admin_config: Record<string, unknown>;
+  status: string;
+  test_report: Record<string, unknown> | null;
+};
+
 export type Workspace = {
   profile: Profile;
   account: Account;
@@ -78,6 +86,7 @@ export type Workspace = {
   services: Service[];
   projectServices: ProjectService[];
   harness: HarnessState | null;
+  harnessVersion: HarnessVersion | null;
 };
 
 function requireClient() {
@@ -112,6 +121,11 @@ export async function loadWorkspace(session: Session): Promise<Workspace> {
     ? await client.from("project_harness_settings").select("*").eq("project_id", activeProjectId).maybeSingle()
     : { data: null, error: null };
   if (harnessResult.error) throw harnessResult.error;
+  const harness = harnessResult.data as HarnessState | null;
+  const harnessVersionResult = harness?.active_version_id
+    ? await client.from("harness_versions").select("*").eq("id", harness.active_version_id).maybeSingle()
+    : { data: null, error: null };
+  if (harnessVersionResult.error) throw harnessVersionResult.error;
 
   return {
     profile: profileResult.data as Profile,
@@ -119,7 +133,8 @@ export async function loadWorkspace(session: Session): Promise<Workspace> {
     projects,
     services: (servicesResult.data ?? []) as Service[],
     projectServices: (projectServicesResult.data ?? []) as ProjectService[],
-    harness: harnessResult.data as HarnessState | null,
+    harness,
+    harnessVersion: harnessVersionResult.data as HarnessVersion | null,
   };
 }
 
@@ -176,12 +191,14 @@ export async function setServiceEnabled(projectId: string, serviceSlug: string, 
 }
 
 export async function saveHarnessUserConfig(projectId: string, config: Record<string, unknown>) {
-  const client = requireClient();
-  const { data: userResult, error: userError } = await client.auth.getUser();
-  if (userError || !userResult.user) throw userError ?? new Error("Нужно войти");
-  const { error } = await client
-    .from("project_harness_settings")
-    .update({ user_config: config, updated_by: userResult.user.id, updated_at: new Date().toISOString() })
-    .eq("project_id", projectId);
+  const { error } = await requireClient().rpc("update_harness_user_config", {
+    p_project_id: projectId,
+    p_user_config: config,
+  });
+  if (error) throw error;
+}
+
+export async function acceptHarnessVersion(projectId: string) {
+  const { error } = await requireClient().rpc("accept_harness_version", { p_project_id: projectId });
   if (error) throw error;
 }

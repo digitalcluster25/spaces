@@ -24,11 +24,13 @@ import {
   X,
 } from "lucide-react";
 import {
+  acceptHarnessVersion,
   archiveProject,
   authReady,
   createProject,
   loadWorkspace,
   restoreProject,
+  saveHarnessUserConfig,
   setActiveProject,
   setServiceEnabled,
   supabase,
@@ -96,6 +98,30 @@ export function App() {
   const authMode: AuthMode | null =
     path === "/login" ? "login" : path === "/register" ? "register" : path === "/forgot" ? "forgot" : null;
 
+  if (session && workspaceState.workspace?.profile.is_superadmin) {
+    return (
+      <MfaBoundary session={session}>
+        <AppContent session={session} authLoading={authLoading} workspaceState={workspaceState} path={path} authMode={authMode} />
+      </MfaBoundary>
+    );
+  }
+
+  return <AppContent session={session} authLoading={authLoading} workspaceState={workspaceState} path={path} authMode={authMode} />;
+}
+
+function AppContent({
+  session,
+  authLoading,
+  workspaceState,
+  path,
+  authMode,
+}: {
+  session: Session | null;
+  authLoading: boolean;
+  workspaceState: ReturnType<typeof useWorkspace>;
+  path: string;
+  authMode: AuthMode | null;
+}) {
   const header = session && workspaceState.workspace ? (
     <TenantBar session={session} workspace={workspaceState.workspace} onRefresh={workspaceState.refresh} />
   ) : (
@@ -118,6 +144,92 @@ export function App() {
       ) : (
         <Landing />
       )}
+    </main>
+  );
+}
+
+function MfaBoundary({ session, children }: { session: Session; children: React.ReactNode }) {
+  const [verified, setVerified] = React.useState<boolean | null>(null);
+
+  React.useEffect(() => {
+    if (!supabase) return;
+    supabase.auth.mfa.getAuthenticatorAssuranceLevel().then(({ data, error }) => {
+      setVerified(!error && data.currentLevel === "aal2");
+    });
+  }, [session.access_token]);
+
+  if (verified === null) return <StatePage loading title="Проверяем защиту аккаунта" text="Подтверждаем второй фактор." />;
+  if (!verified) return <MfaSetup onVerified={() => setVerified(true)} />;
+  return <>{children}</>;
+}
+
+function MfaSetup({ onVerified }: { onVerified: () => void }) {
+  const [factorId, setFactorId] = React.useState("");
+  const [qrCode, setQrCode] = React.useState("");
+  const [secret, setSecret] = React.useState("");
+  const [code, setCode] = React.useState("");
+  const [mode, setMode] = React.useState<"loading" | "enroll" | "verify">("loading");
+  const [message, setMessage] = React.useState("");
+  const [working, setWorking] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!supabase) return;
+    supabase.auth.mfa.listFactors().then(({ data, error }) => {
+      if (error) {
+        setMessage(error.message);
+        setMode("verify");
+        return;
+      }
+      const factor = data.totp.find((item) => item.status === "verified");
+      if (factor) {
+        setFactorId(factor.id);
+        setMode("verify");
+      } else {
+        setMode("enroll");
+      }
+    });
+  }, []);
+
+  async function enroll() {
+    if (!supabase) return;
+    setWorking(true);
+    setMessage("");
+    const { data, error } = await supabase.auth.mfa.enroll({ factorType: "totp", friendlyName: "Spaces Superadmin" });
+    setWorking(false);
+    if (error) return setMessage(error.message);
+    setFactorId(data.id);
+    setQrCode(data.totp.qr_code);
+    setSecret(data.totp.secret);
+    setMode("verify");
+  }
+
+  async function verify(event: React.FormEvent) {
+    event.preventDefault();
+    if (!supabase || !factorId) return;
+    setWorking(true);
+    setMessage("");
+    const { error } = await supabase.auth.mfa.challengeAndVerify({ factorId, code });
+    setWorking(false);
+    if (error) return setMessage(error.message);
+    onVerified();
+  }
+
+  return (
+    <main className="securityGate">
+      <div className="securityCard">
+        <span className="securityIcon"><ShieldCheck size={22} /></span>
+        <div><span className="sectionKicker">superadmin security</span><h1>Двухфакторная защита</h1><p>Для владельца Spaces второй фактор обязателен при каждом новом входе.</p></div>
+        {mode === "loading" ? <div className="notice"><LoaderCircle className="spin" size={16} />Проверяем доступные факторы</div> : mode === "enroll" ? (
+          <button className="button buttonPrimary buttonFull" disabled={working} onClick={() => void enroll()}>{working ? "Создаём..." : "Настроить приложение-аутентификатор"}</button>
+        ) : (
+          <form className="mfaForm" onSubmit={verify}>
+            {qrCode && <div className="qrBlock"><img src={qrCode} alt="QR-код для приложения-аутентификатора" /><div><strong>Отсканируйте QR-код</strong><p>Или введите ключ вручную:</p><code>{secret}</code></div></div>}
+            <label>Код из приложения<input inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, ""))} required autoFocus /></label>
+            <button className="button buttonPrimary buttonFull" disabled={working || code.length !== 6}>{working ? "Проверяем..." : "Подтвердить вход"}</button>
+          </form>
+        )}
+        {message && <div className="notice errorNotice">{message}</div>}
+      </div>
     </main>
   );
 }
@@ -406,7 +518,7 @@ function ProjectWorkspace({ session, project, workspace, refresh }: { session: S
 
   return (
     <div className="workspaceSection">
-      <div className="sectionHeader"><div><span className="sectionKicker">активный проект</span><h2>{project.name}</h2></div><span className="badge dark">{connections.filter((item) => item.status === "ready").length} сервисов готово</span></div>
+      <div className="sectionHeader"><div><span className="sectionKicker">активный проект</span><h2>{project.name}</h2></div><span className="badge dark">{connections.filter((item) => item.status === "ready" && !workspace.services.find((service) => service.id === item.service_id)?.is_core).length} сервисов готово</span></div>
       {message && <div className="notice errorNotice">{message}</div>}
       <div className="serviceList">
         {workspace.services.filter((service) => !service.is_core).map((service) => {
@@ -424,7 +536,7 @@ function ProjectWorkspace({ session, project, workspace, refresh }: { session: S
           );
         })}
       </div>
-      {project.system_key === "spaces-root" && <HarnessPanel workspace={workspace} />}
+      <HarnessPanel project={project} workspace={workspace} refresh={refresh} />
     </div>
   );
 }
@@ -433,18 +545,54 @@ function statusLabel(status?: string) {
   return ({ ready: "Готов", provisioning: "Создаётся", error: "Ошибка", disabled: "Выключен", suspended: "Приостановлен", archived: "В архиве" } as Record<string, string>)[status ?? "disabled"];
 }
 
-function HarnessPanel({ workspace }: { workspace: Workspace }) {
-  const config = workspace.harness?.user_config ?? {};
+function HarnessPanel({ project, workspace, refresh }: { project: Project; workspace: Workspace; refresh: () => Promise<void> }) {
+  const initial = workspace.harness?.user_config ?? {};
+  const [config, setConfig] = React.useState<Record<string, unknown>>(initial);
+  const [saving, setSaving] = React.useState(false);
+  const [message, setMessage] = React.useState("");
+  const fields = [
+    ["system_context", "Системный контекст", "Цели, терминология и важные ограничения проекта"],
+    ["acceptance_criteria", "Критерии результата", "Как проверить, что задача выполнена полностью"],
+    ["accuracy_rules", "Требования к точности", "Источники, перепроверка и допустимая неопределённость"],
+    ["response_preferences", "Предпочтения ответа", "Язык, тон, формат и степень подробности"],
+  ] as const;
+
+  React.useEffect(() => setConfig(initial), [workspace.harness?.project_id, workspace.harness?.user_config]);
+
+  async function save() {
+    setSaving(true);
+    setMessage("");
+    try {
+      await saveHarnessUserConfig(project.id, config);
+      await refresh();
+      setMessage("Настройки сохранены.");
+    } catch (cause) {
+      setMessage(cause instanceof Error ? cause.message : "Не удалось сохранить настройки");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function acceptUpdate() {
+    try {
+      await acceptHarnessVersion(project.id);
+      await refresh();
+    } catch (cause) {
+      setMessage(cause instanceof Error ? cause.message : "Не удалось применить версию");
+    }
+  }
+
   return (
     <section className="harnessPanel">
-      <div className="sectionHeader"><div><span className="sectionKicker"><Settings2 size={14} />harness</span><h2>Настройки среды</h2><p>Административный слой задаёт обязательные правила. Пользовательский слой дополняет их и не может ослабить безопасность.</p></div><span className="badge dark">v1</span></div>
+      <div className="sectionHeader"><div><span className="sectionKicker"><Settings2 size={14} />harness</span><h2>Настройки среды</h2><p>Административный слой задаёт обязательные правила. Пользовательский слой дополняет их и не может ослабить безопасность.</p></div><span className="badge dark">v{workspace.harnessVersion?.version ?? "—"}</span></div>
+      {workspace.harness?.offered_version_id && <div className="notice updateNotice"><span>Доступна новая версия административного шаблона. Она будет применена только после подтверждения.</span><button className="button buttonOutline" onClick={() => void acceptUpdate()}>Применить</button></div>}
       <div className="harnessGrid">
-        <label>Системный контекст<textarea value={String(config.system_context ?? "")} readOnly placeholder="Пользовательский контекст пока не задан" /></label>
-        <label>Критерии результата<textarea value={String(config.acceptance_criteria ?? "")} readOnly placeholder="Критерии проекта" /></label>
-        <label>Требования к точности<textarea value={String(config.accuracy_rules ?? "")} readOnly placeholder="Правила проверки фактов" /></label>
-        <label>Предпочтения ответа<textarea value={String(config.response_preferences ?? "")} readOnly placeholder="Язык, тон и формат" /></label>
+        {fields.map(([key, label, placeholder]) => <label key={key}>{label}<textarea value={String(config[key] ?? "")} onChange={(event) => setConfig((current) => ({ ...current, [key]: event.target.value }))} placeholder={placeholder} /></label>)}
       </div>
       <div className="notice"><ShieldCheck size={16} />Обязательные правила безопасности, изоляции проекта и проверки результата применяются без изменений.</div>
+      {workspace.harness?.conflict_report?.map((conflict, index) => <div className="notice errorNotice" key={index}>{conflict.field}: {conflict.reason}</div>)}
+      {message && <div className="notice">{message}</div>}
+      <div className="harnessActions"><button className="button buttonPrimary" disabled={saving} onClick={() => void save()}>{saving ? "Сохраняем..." : "Сохранить настройки"}</button></div>
     </section>
   );
 }
