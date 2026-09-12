@@ -37,7 +37,7 @@ outline_hash="$(sha256sum infrastructure/outline-spaces-sso/server.js infrastruc
 if [ "$(cat /opt/outline/spaces-sso-revision 2>/dev/null || true)" != "$outline_hash" ]; then
   install -m 0644 infrastructure/outline-spaces-sso/server.js /opt/outline/spaces-sso/server.js
   install -m 0644 infrastructure/outline-spaces-sso/docker-compose.override.yml /opt/outline/docker-compose.override.yml
-  docker compose -f /opt/outline/docker-compose.yml -f /opt/outline/docker-compose.override.yml up -d spaces-sso
+  docker compose -f /opt/outline/docker-compose.yml -f /opt/outline/docker-compose.override.yml up -d --force-recreate spaces-sso
   printf '%s\n' "$outline_hash" > /opt/outline/spaces-sso-revision
 fi
 
@@ -45,7 +45,7 @@ openseo_sso_hash="$(sha256sum infrastructure/openseo-spaces-sso/server.js infras
 if [ "$(cat /opt/openseo/spaces-sso-revision 2>/dev/null || true)" != "$openseo_sso_hash" ]; then
   install -m 0644 infrastructure/openseo-spaces-sso/server.js /opt/openseo/spaces-sso/server.js
   install -m 0644 infrastructure/openseo-spaces-sso/docker-compose.sso.yml /opt/openseo/docker-compose.sso.yml
-  docker compose -f /opt/openseo/docker-compose.yml -f /opt/openseo/docker-compose.sso.yml up -d spaces-sso
+  docker compose -f /opt/openseo/docker-compose.yml -f /opt/openseo/docker-compose.sso.yml up -d --force-recreate spaces-sso
   printf '%s\n' "$openseo_sso_hash" > /opt/openseo/spaces-sso-revision
 fi
 
