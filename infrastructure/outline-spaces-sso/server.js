@@ -187,8 +187,10 @@ async function provisionOutline(input) {
 
     if (["provision", "resume", "restore"].includes(input.operation)) {
       teamId = await ensureOutlineTeam(client, project);
-    } else if (!teamId) {
+    } else if (!teamId && !["suspend", "archive", "delete"].includes(input.operation)) {
       throw new Error("Outline tenant not found");
+    } else if (!teamId) {
+      // Destructive operations are idempotent when no external tenant exists.
     } else if (input.operation === "suspend") {
       await client.query('update teams set "suspendedAt" = now(), "updatedAt" = now() where id = $1', [teamId]);
     } else if (input.operation === "archive") {
