@@ -26,9 +26,9 @@ test("auth screens are available", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Новый пароль" })).toBeVisible();
 
   await page.goto("/account");
-  await expect(page.getByRole("heading", { name: "Аккаунт Spaces" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Нужно войти" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "MCP для внешних агентов" })).toHaveCount(0);
+  await expect(page.getByText("Вход выполнен")).toHaveCount(0);
 
   await page.goto("/privacy");
   await expect(page.getByRole("heading", { name: "Privacy Policy" })).toBeVisible();
