@@ -14,6 +14,7 @@ import {
   Layers3,
   LockKeyhole,
   Mail,
+  Map,
   MessageSquareText,
   Network,
   ShieldCheck,
@@ -49,6 +50,17 @@ const connectedServices = [
     uiUrl: "https://openseo.spaces.community",
     mcpUrl: "https://openseo.spaces.community/mcp",
   },
+];
+
+const siteMap = [
+  { path: "/", label: "Главная", description: "Лендинг проекта Spaces и описание платформы." },
+  { path: "/login", label: "Вход", description: "Email/password и Google OAuth вход в Spaces." },
+  { path: "/register", label: "Регистрация", description: "Создание единого аккаунта Spaces." },
+  { path: "/forgot", label: "Восстановление пароля", description: "Запрос письма для сброса пароля." },
+  { path: "/reset-password", label: "Новый пароль", description: "Экран установки нового пароля из письма." },
+  { path: "/account", label: "Аккаунт", description: "Личный кабинет, сервисы и MCP-доступ." },
+  { path: "/privacy", label: "Privacy Policy", description: "Политика обработки данных Spaces." },
+  { path: "/terms", label: "Terms of Service", description: "Правила использования Spaces." },
 ];
 
 function App() {
@@ -167,6 +179,8 @@ function Landing() {
         </p>
       </section>
 
+      <SiteMapSection />
+
       <section className="sectionBand" id="platform">
         <div className="sectionIntro">
           <span className="sectionKicker">архитектура</span>
@@ -227,6 +241,30 @@ function Landing() {
         </div>
       </section>
     </>
+  );
+}
+
+function SiteMapSection() {
+  return (
+    <section className="sitemapSection" aria-label="Карта сайта Spaces">
+      <div className="sectionIntro">
+        <span className="sectionKicker">site map</span>
+        <h2>Карта созданных страниц Spaces.</h2>
+        <p>OpenSEO не включен: это отдельный сервис на поддомене, а не страница главного сайта.</p>
+      </div>
+      <div className="sitemapGrid">
+        {siteMap.map((page) => (
+          <a className="sitemapCard" href={page.path} key={page.path}>
+            <div>
+              <Map size={18} />
+              <strong>{page.label}</strong>
+            </div>
+            <code>{page.path}</code>
+            <p>{page.description}</p>
+          </a>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -535,7 +573,7 @@ function ExternalAgentPanel() {
         </div>
         <div className="chatMessage assistant">
           <MessageSquareText size={18} />
-          <p>OpenSEO MCP endpoint готов. Следующий шаг - заменить отдельную авторизацию OpenSEO на Spaces/Supabase SSO.</p>
+          <p>OpenSEO SSO работает через Spaces/Supabase. Следующий шаг - выдать агентам управляемый MCP-доступ.</p>
         </div>
       </div>
     </section>
