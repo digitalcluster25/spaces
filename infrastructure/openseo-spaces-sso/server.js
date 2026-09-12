@@ -16,6 +16,7 @@ function signProjectContext(claims) {
     userId: claims.user_id,
     role: claims.role,
     services: claims.services,
+    projects: claims.projects,
     exp: Date.now() + 55 * 60 * 1000,
   })).toString("base64url");
   const signature = crypto.createHmac("sha256", serviceSecret).update(payload).digest("base64url");

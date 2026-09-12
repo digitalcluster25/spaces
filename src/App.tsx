@@ -619,6 +619,15 @@ function ProjectDashboard({ session, workspace, refresh }: { session: Session; w
     ?? null;
   const visibleProjects = workspace.projects.filter((project) => project.status === tab);
 
+  React.useEffect(() => {
+    const requestedProjectId = new URLSearchParams(window.location.search).get("project");
+    const requestedProject = workspace.projects.find((project) => project.id === requestedProjectId && project.status === "active");
+    if (!requestedProject || requestedProject.id === activeProject?.id) return;
+    window.history.replaceState(null, "", "/account");
+    setActiveProjectForTab(workspace.account.id, requestedProject.id);
+    void refresh();
+  }, [activeProject?.id, refresh, workspace.account.id, workspace.projects]);
+
   async function chooseProject(project: Project) {
     setActiveProjectForTab(workspace.account.id, project.id);
     await refresh();

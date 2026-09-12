@@ -32,7 +32,7 @@ if (!source.includes("function SpacesTenantFrame()")) {
       src="/spaces-panel"
       title="Spaces"
       aria-label="Spaces"
-      sandbox="allow-scripts allow-same-origin allow-popups"
+      sandbox="allow-scripts allow-same-origin allow-popups allow-top-navigation-by-user-activation"
       style={{
         position: "fixed",
         inset: "0 0 auto",
