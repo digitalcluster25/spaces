@@ -340,6 +340,19 @@ h3 {
   padding: 84px clamp(18px, 5vw, 72px);
 }
 
+.accountPage {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.55fr) minmax(0, 1fr);
+  gap: clamp(30px, 7vw, 110px);
+  align-items: start;
+  min-height: calc(100vh - 69px);
+  padding: 84px clamp(18px, 5vw, 72px);
+}
+
+.accountIntro {
+  max-width: 520px;
+}
+
 .splitSection {
   border-top: 1px solid var(--border);
 }
@@ -462,6 +475,10 @@ code {
   display: grid;
   gap: 16px;
   padding: 26px;
+}
+
+.accountPanel {
+  min-height: 0;
 }
 
 .serviceDirectory {
@@ -634,6 +651,10 @@ input:focus {
     grid-template-columns: 1fr;
   }
 
+  .accountPage {
+    grid-template-columns: 1fr;
+  }
+
   .hero {
     min-height: auto;
   }
@@ -675,6 +696,11 @@ input:focus {
   .splitSection,
   .securitySection,
   .authShell {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .accountPage {
     padding-left: 16px;
     padding-right: 16px;
   }

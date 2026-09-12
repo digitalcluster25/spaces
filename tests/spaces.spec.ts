@@ -27,16 +27,8 @@ test("auth screens are available", async ({ page }) => {
 
   await page.goto("/account");
   await expect(page.getByRole("heading", { name: "Аккаунт Spaces" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Подключенные сервисы" })).toBeVisible();
-  await expect(page.getByText("OpenSEO", { exact: true })).toBeVisible();
-  await expect(page.getByText("Outline", { exact: true })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "MCP для внешних агентов" })).toBeVisible();
-  await expect(page.getByText("OpenSEO SSO работает")).toBeVisible();
-  await expect(page.getByRole("link", { name: /Открыть/ }).first()).toHaveAttribute("href", "/login");
-  await expect(page.getByRole("link", { name: "MCP" })).toHaveAttribute(
-    "href",
-    "https://openseo.spaces.community/mcp",
-  );
+  await expect(page.getByRole("heading", { name: "Нужно войти" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "MCP для внешних агентов" })).toHaveCount(0);
 
   await page.goto("/privacy");
   await expect(page.getByRole("heading", { name: "Privacy Policy" })).toBeVisible();

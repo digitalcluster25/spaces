@@ -12,7 +12,6 @@ import {
   Layers3,
   LockKeyhole,
   Mail,
-  MessageSquareText,
   ShieldCheck,
   Sparkles,
 } from "lucide-react";
@@ -359,18 +358,9 @@ function AccountPage() {
     return () => subscription.unsubscribe();
   }, []);
 
-  async function handleSignOut() {
-    if (!supabase) {
-      return;
-    }
-
-    await supabase.auth.signOut();
-    window.location.assign("/");
-  }
-
   return (
-    <section className="authShell">
-      <div className="authAside">
+    <section className="accountPage">
+      <div className="accountIntro">
         <div className="eyebrow">
           <Fingerprint size={16} />
           account hub
@@ -388,23 +378,7 @@ function AccountPage() {
         ) : loading ? (
           <p>Проверяем сессию...</p>
         ) : session ? (
-          <>
-            <h2>Вход выполнен</h2>
-            <p>{session.user.email}</p>
-            <div className="securityList compact">
-              <div>
-                <ShieldCheck size={20} />
-                <span>Сессия активна</span>
-              </div>
-              <div>
-                <Layers3 size={20} />
-                <span>Профиль готов к связке с сервисами</span>
-              </div>
-            </div>
-            <button className="outlineButton full" type="button" onClick={handleSignOut}>
-              Выйти
-            </button>
-          </>
+          <ServiceDirectory session={session} />
         ) : (
           <>
             <h2>Нужно войти</h2>
@@ -414,8 +388,6 @@ function AccountPage() {
             </a>
           </>
         )}
-        <ServiceDirectory session={session} />
-        <ExternalAgentPanel />
       </div>
     </section>
   );
@@ -468,33 +440,6 @@ function ServiceDirectory({ session }: { session: Session | null }) {
           </div>
         </article>
       ))}
-    </section>
-  );
-}
-
-function ExternalAgentPanel() {
-  return (
-    <section className="aiControlPanel" aria-label="MCP для внешних агентов">
-      <div className="chatHeader">
-        <div>
-          <span className="sectionKicker">agent access</span>
-          <h3>MCP для внешних агентов</h3>
-        </div>
-        <span className="chatStatus">first</span>
-      </div>
-      <div className="chatThread">
-        <div className="chatMessage assistant">
-          <MessageSquareText size={18} />
-          <p>Сначала подключаем внешних агентов к сервисам через MCP. Собственный чат Spaces добавим после обкатки.</p>
-        </div>
-        <div className="chatMessage user">
-          <p>Первый сервис: OpenSEO.</p>
-        </div>
-        <div className="chatMessage assistant">
-          <MessageSquareText size={18} />
-          <p>OpenSEO SSO работает через Spaces/Supabase. Следующий шаг - выдать агентам управляемый MCP-доступ.</p>
-        </div>
-      </div>
     </section>
   );
 }
