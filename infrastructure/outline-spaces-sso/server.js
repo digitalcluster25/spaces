@@ -120,12 +120,13 @@ async function findOrCreateOutlineUser(claims, providedTeamId) {
       [email, teamId],
     );
     let user = existing.rows[0];
-    let jwtSecret;
-
-    try {
-      jwtSecret = user && decryptOutlineValue(user.jwtSecret);
-    } catch {
-      jwtSecret = crypto.randomBytes(32).toString("hex");
+    let jwtSecret = crypto.randomBytes(32).toString("hex");
+    if (user) {
+      try {
+        jwtSecret = decryptOutlineValue(user.jwtSecret);
+      } catch {
+        // Replace legacy or damaged secrets with a valid Outline session secret.
+      }
     }
 
     if (!user) {
