@@ -99,7 +99,12 @@ async function authorizeProject(supabaseUrl: string, token: string, projectId: s
   if (!project?.project_id || !project.project_name || !project.project_slug || !project.role) {
     throw new AppError("UNAUTHENTICATED");
   }
-  return project;
+  return {
+    id: project.project_id,
+    name: project.project_name,
+    slug: project.project_slug,
+    role: project.role,
+  };
 }
 
 function getJwks(supabaseUrl: string) {
@@ -133,9 +138,9 @@ export async function resolveSpacesSupabaseContext(headers: Headers): Promise<En
   const signedProject = await verifyProjectContext(headers, spacesUserId);
   const project = await authorizeProject(supabaseUrl, token, signedProject.projectId);
   return resolveDelegatedProjectContext(`spaces:${spacesUserId}`, userEmail, {
-    id: project.project_id,
-    name: project.project_name,
-    slug: project.project_slug,
+    id: project.id,
+    name: project.name,
+    slug: project.slug,
     role: project.role,
   });
 }

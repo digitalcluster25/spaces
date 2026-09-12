@@ -27,26 +27,31 @@ async function handleProvision(request: Request) {
   };
   const project = input.project || {};
   const owner = input.owner || {};
+  const projectId = String(project.id || "");
+  const projectName = String(project.name || "");
+  const projectSlug = String(project.slug || "");
+  const ownerUserId = String(owner.userId || "");
+  const ownerEmail = String(owner.email || "");
   if (
     !["provision", "resume", "restore", "suspend", "archive", "delete"].includes(String(input.operation)) ||
-    !/^[0-9a-f-]{36}$/i.test(String(project.id || "")) ||
-    !project.name || !project.slug || !owner.userId || !owner.email
+    !/^[0-9a-f-]{36}$/i.test(projectId) ||
+    !projectName || !projectSlug || !ownerUserId || !ownerEmail
   ) {
     return Response.json({ error: "Invalid provisioning request" }, { status: 400 });
   }
 
   if (input.operation === "delete") {
-    await deleteDelegatedOrganizationForProject(project.id);
-    return Response.json({ externalTenantId: `spaces-${project.id}` });
+    await deleteDelegatedOrganizationForProject(projectId);
+    return Response.json({ externalTenantId: `spaces-${projectId}` });
   }
   if (["suspend", "archive"].includes(String(input.operation))) {
-    return Response.json({ externalTenantId: `spaces-${project.id}` });
+    return Response.json({ externalTenantId: `spaces-${projectId}` });
   }
 
-  const context = await resolveDelegatedProjectContext(`spaces:${owner.userId}`, owner.email, {
-    id: project.id,
-    name: project.name,
-    slug: project.slug,
+  const context = await resolveDelegatedProjectContext(`spaces:${ownerUserId}`, ownerEmail, {
+    id: projectId,
+    name: projectName,
+    slug: projectSlug,
     role: "owner",
   });
   return Response.json({ externalTenantId: context.organizationId });
