@@ -256,6 +256,16 @@ export async function setServiceEnabled(projectId: string, serviceSlug: string, 
   if (error) throw error;
 }
 
+export async function createServiceTicket(projectId: string, serviceSlug: string) {
+  const { data, error } = await requireClient().rpc("create_service_ticket", {
+    p_project_id: projectId,
+    p_service_slug: serviceSlug,
+  });
+  if (error) throw error;
+  if (!data) throw new Error("Не удалось создать билет входа");
+  return data as string;
+}
+
 export async function saveHarnessUserConfig(projectId: string, config: Record<string, unknown>) {
   const { error } = await requireClient().rpc("update_harness_user_config", {
     p_project_id: projectId,

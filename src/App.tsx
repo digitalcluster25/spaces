@@ -38,6 +38,7 @@ import {
   archiveProject,
   authReady,
   createProject,
+  createServiceTicket,
   loadWorkspace,
   loadAdminData,
   restoreProject,
@@ -304,15 +305,19 @@ function TenantBar({ session, workspace, onRefresh }: { session: Session; worksp
     await onRefresh();
   }
 
-  function launch(service: Service) {
+  async function launch(service: Service) {
     if (!activeProject || !service.base_url) return;
-    const secondsLeft = Math.max(60, Math.floor((session.expires_at ?? Date.now() / 1000 + 3600) - Date.now() / 1000));
-    document.cookie = `spaces_access_token=${session.access_token}; Domain=.spaces.community; Path=/; Max-Age=${secondsLeft}; Secure; SameSite=Lax`;
-    document.cookie = `spaces_project_id=${activeProject.id}; Domain=.spaces.community; Path=/; Max-Age=${secondsLeft}; Secure; SameSite=Lax`;
-    const url = service.slug === "outline"
-      ? `${service.base_url}/spaces-sso?next=/home&project=${encodeURIComponent(activeProject.id)}`
-      : service.base_url;
-    window.open(url, "_blank", "noopener,noreferrer");
+    const popup = window.open("about:blank", "_blank");
+    if (popup) popup.opener = null;
+    try {
+      const ticket = await createServiceTicket(activeProject.id, service.slug);
+      const next = service.slug === "outline" ? "/home" : "/";
+      const url = service.base_url + "/spaces-sso#ticket=" + encodeURIComponent(ticket) + "&next=" + encodeURIComponent(next);
+      if (popup) popup.location.replace(url);
+      else window.open(url, "_blank", "noopener,noreferrer");
+    } catch {
+      popup?.close();
+    }
   }
 
   const name = workspace.profile.display_name || workspace.profile.email || "Пользователь";
@@ -348,7 +353,7 @@ function TenantBar({ session, workspace, onRefresh }: { session: Session; worksp
         {projectServices.map((connection) => {
           const service = workspace.services.find((item) => item.id === connection.service_id);
           if (!service || service.is_core) return null;
-          return <button key={service.id} type="button" onClick={() => launch(service)}>{service.name}<ExternalLink size={13} /></button>;
+          return <button key={service.id} type="button" onClick={() => void launch(service)}>{service.name}<ExternalLink size={13} /></button>;
         })}
         {workspace.profile.is_superadmin && <a href="https://superadminko.spaces.community">Superadminko<ExternalLink size={13} /></a>}
       </nav>
@@ -661,13 +666,20 @@ function ProjectWorkspace({ session, project, workspace, refresh }: { session: S
   const connections = workspace.projectServices.filter((item) => item.project_id === project.id);
   const [message, setMessage] = React.useState("");
 
-  function launch(service: Service) {
+  async function launch(service: Service) {
     if (!service.base_url) return;
-    const secondsLeft = Math.max(60, Math.floor((session.expires_at ?? Date.now() / 1000 + 3600) - Date.now() / 1000));
-    document.cookie = `spaces_access_token=${session.access_token}; Domain=.spaces.community; Path=/; Max-Age=${secondsLeft}; Secure; SameSite=Lax`;
-    document.cookie = `spaces_project_id=${project.id}; Domain=.spaces.community; Path=/; Max-Age=${secondsLeft}; Secure; SameSite=Lax`;
-    const url = service.slug === "outline" ? `${service.base_url}/spaces-sso?next=/home&project=${project.id}` : service.base_url;
-    window.open(url, "_blank", "noopener,noreferrer");
+    const popup = window.open("about:blank", "_blank");
+    if (popup) popup.opener = null;
+    try {
+      const ticket = await createServiceTicket(project.id, service.slug);
+      const next = service.slug === "outline" ? "/home" : "/";
+      const url = service.base_url + "/spaces-sso#ticket=" + encodeURIComponent(ticket) + "&next=" + encodeURIComponent(next);
+      if (popup) popup.location.replace(url);
+      else window.open(url, "_blank", "noopener,noreferrer");
+    } catch (cause) {
+      popup?.close();
+      setMessage(cause instanceof Error ? cause.message : "Не удалось открыть сервис");
+    }
   }
 
   async function toggle(service: Service, enabled: boolean) {
@@ -693,7 +705,7 @@ function ProjectWorkspace({ session, project, workspace, refresh }: { session: S
               <div><div className="serviceName"><strong>{service.name}</strong><span className={`status status-${connection?.status ?? "disabled"}`}>{statusLabel(connection?.status)}</span></div><p>{service.description}</p>{connection?.last_error && <small className="fieldError">{connection.last_error}</small>}</div>
               <div className="serviceActions">
                 <label className="switch"><input type="checkbox" checked={Boolean(enabled)} onChange={(event) => void toggle(service, event.target.checked)} /><span /></label>
-                <button className="button buttonOutline" type="button" disabled={connection?.status !== "ready"} onClick={() => launch(service)}>Открыть<ExternalLink size={15} /></button>
+                <button className="button buttonOutline" type="button" disabled={connection?.status !== "ready"} onClick={() => void launch(service)}>Открыть<ExternalLink size={15} /></button>
                 {service.mcp_url && connection?.status === "ready" && <a className="button buttonGhost" href={service.mcp_url} target="_blank" rel="noreferrer">MCP<ExternalLink size={14} /></a>}
               </div>
             </article>
