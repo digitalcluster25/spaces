@@ -114,7 +114,7 @@ async function findOrCreateOutlineUser(spacesUser) {
 const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, "https://outline.spaces.community");
-    if (url.pathname !== "/spaces-sso") return redirect(res, "/home", 404);
+    if (url.pathname !== "/" && url.pathname !== "/spaces-sso") return redirect(res, "/home", 404);
 
     const token = parseCookies(req.headers.cookie).spaces_access_token;
     if (!token) return redirect(res, "https://spaces.community/login?redirect_to=%2Faccount");
