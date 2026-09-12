@@ -60,7 +60,7 @@ const connectedServices: ConnectedService[] = [
     name: "Outline",
     description: "База знаний Spaces, проектная документация и внутренние инструкции.",
     status: "Docs ready",
-    uiUrl: "https://outline.spaces.community/",
+    uiUrl: "https://outline.spaces.community/spaces-sso?next=/home",
   },
 ];
 
