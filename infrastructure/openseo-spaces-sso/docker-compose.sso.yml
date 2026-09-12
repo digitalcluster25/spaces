@@ -10,9 +10,10 @@ services:
     command: ["node", "/sso/server.js"]
     volumes:
       - ./spaces-sso:/sso:ro
+      - /opt/spaces/repo/infrastructure/shared:/spaces-shared:ro
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.openseo-spaces-sso.rule=Host(`openseo.spaces.community`) && PathPrefix(`/spaces-sso`)"
+      - "traefik.http.routers.openseo-spaces-sso.rule=Host(`openseo.spaces.community`) && (PathPrefix(`/spaces-sso`) || Path(`/spaces-panel`))"
       - "traefik.http.routers.openseo-spaces-sso.entrypoints=websecure"
       - "traefik.http.routers.openseo-spaces-sso.priority=10000"
       - "traefik.http.routers.openseo-spaces-sso.tls.certresolver=letsencrypt"

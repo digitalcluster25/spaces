@@ -1,5 +1,6 @@
 const http = require("http");
 const crypto = require("crypto");
+const { createPanelPage, readSignedContext } = require("/spaces-shared/tenant-panel.js");
 
 const port = Number(process.env.PORT || 3000);
 const supabaseUrl = process.env.SPACES_SUPABASE_URL || process.env.SUPABASE_URL;
@@ -11,8 +12,10 @@ function signProjectContext(claims) {
     projectId: claims.project_id,
     projectName: claims.project_name,
     projectSlug: claims.project_slug,
+    accountName: claims.account_name,
     userId: claims.user_id,
     role: claims.role,
+    services: claims.services,
     exp: Date.now() + 55 * 60 * 1000,
   })).toString("base64url");
   const signature = crypto.createHmac("sha256", serviceSecret).update(payload).digest("base64url");
@@ -85,6 +88,14 @@ const server = http.createServer(async (req, res) => {
         "Content-Security-Policy": "default-src 'none'; script-src 'unsafe-inline'; connect-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'",
       });
       return res.end(ticketPage());
+    }
+    if (url.pathname === "/spaces-panel" && req.method === "GET") {
+      res.writeHead(200, {
+        "Content-Type": "text/html; charset=utf-8",
+        "Cache-Control": "no-store",
+        "Content-Security-Policy": "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; frame-ancestors 'self'; base-uri 'none'",
+      });
+      return res.end(createPanelPage(readSignedContext(req, serviceSecret), "openseo"));
     }
     if (url.pathname !== "/spaces-sso/exchange" || req.method !== "POST") {
       res.writeHead(404, { "Content-Type": "text/plain" });

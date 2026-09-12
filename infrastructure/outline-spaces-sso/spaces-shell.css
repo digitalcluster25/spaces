@@ -1,0 +1,23 @@
+:root {
+  --spaces-tenant-height: 44px;
+}
+
+body {
+  box-sizing: border-box;
+  padding-top: var(--spaces-tenant-height) !important;
+}
+
+#spaces-tenant-frame {
+  position: fixed;
+  inset: 0 0 auto;
+  z-index: 2147483647;
+  width: 100%;
+  height: var(--spaces-tenant-height);
+  border: 0;
+  background: #fff;
+}
+
+@media print {
+  body { padding-top: 0 !important; }
+  #spaces-tenant-frame { display: none; }
+}

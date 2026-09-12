@@ -43,3 +43,12 @@ test("superadmin control plane is closed without authentication", async ({ page 
   await expect(page.getByText("Суперадминка доступна только владельцу Spaces.")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Superadminko" })).toHaveCount(0);
 });
+
+test("service launch requires the Spaces session and preserves its destination", async ({ page }) => {
+  await page.goto("/launch?project=project-id&service=outline");
+
+  await expect(page).toHaveURL(/\/login\?redirect=/);
+  await expect(page.getByRole("heading", { name: "Вход в Spaces" })).toBeVisible();
+  const redirect = new URL(page.url()).searchParams.get("redirect");
+  expect(redirect).toBe("/launch?project=project-id&service=outline");
+});

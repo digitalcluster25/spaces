@@ -5,8 +5,11 @@ FROM ${BASE_IMAGE}
 ENV VITE_SHOW_DEVTOOLS=false
 
 COPY infrastructure/openseo-patches/src/ /app/src/
+COPY infrastructure/openseo-patches/patch-root.mjs /tmp/patch-root.mjs
 
 RUN --mount=type=secret,id=openseo_env \
+    set -e; \
+    node /tmp/patch-root.mjs; \
     set -a; . /run/secrets/openseo_env; set +a; \
     pnpm build; \
     fingerprint="$(env | grep -E '^(VITE_|AUTH_MODE|BYPASS_EMAIL_VERIFICATION|POSTHOG_PUBLIC_KEY|POSTHOG_HOST|TURNSTILE_SITE_KEY|POSTHOG_SOURCEMAPS)' | sort | sha256sum | cut -d' ' -f1)"; \

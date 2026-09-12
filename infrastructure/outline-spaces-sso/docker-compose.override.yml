@@ -1,10 +1,32 @@
 services:
   spaces-sso:
+    volumes:
+      - ./spaces-sso:/spaces-sso:ro
+      - /opt/spaces/repo/infrastructure/shared:/spaces-shared:ro
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.outline-spaces-sso.rule=Host(`outline.spaces.community`) && (PathPrefix(`/spaces-sso`) || PathPrefix(`/spaces-internal`))"
+      - "traefik.http.routers.outline-spaces-sso.rule=Host(`outline.spaces.community`) && (Path(`/`) || PathPrefix(`/spaces-sso`) || PathPrefix(`/spaces-internal`) || Path(`/spaces-panel`))"
       - "traefik.http.routers.outline-spaces-sso.entrypoints=websecure"
       - "traefik.http.routers.outline-spaces-sso.priority=10000"
       - "traefik.http.routers.outline-spaces-sso.tls.certresolver=letsencrypt"
       - "traefik.http.services.outline-spaces-sso.loadbalancer.server.port=3000"
+      - "traefik.docker.network=outline_default"
+
+  spaces-shell:
+    image: nginx:1.27-alpine
+    container_name: outline-spaces-shell
+    restart: always
+    volumes:
+      - ./spaces-shell/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./spaces-shell/spaces-shell.css:/usr/share/nginx/html/spaces-shell.css:ro
+      - ./spaces-shell/spaces-shell.js:/usr/share/nginx/html/spaces-shell.js:ro
+    depends_on:
+      - outline
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.outline-spaces-shell.rule=Host(`outline.spaces.community`)"
+      - "traefik.http.routers.outline-spaces-shell.entrypoints=websecure"
+      - "traefik.http.routers.outline-spaces-shell.priority=1000"
+      - "traefik.http.routers.outline-spaces-shell.tls.certresolver=letsencrypt"
+      - "traefik.http.services.outline-spaces-shell.loadbalancer.server.port=80"
       - "traefik.docker.network=outline_default"

@@ -33,15 +33,19 @@ install -m 0644 infrastructure/spaces-site/docker-compose.yml /opt/spaces/docker
 install -m 0644 infrastructure/spaces-site/nginx.conf /opt/spaces/nginx.conf
 docker compose -f /opt/spaces/docker-compose.yml up -d
 
-outline_hash="$(sha256sum infrastructure/outline-spaces-sso/server.js infrastructure/outline-spaces-sso/docker-compose.override.yml | sha256sum | cut -d' ' -f1)"
+outline_hash="$(sha256sum infrastructure/outline-spaces-sso/server.js infrastructure/outline-spaces-sso/docker-compose.override.yml infrastructure/outline-spaces-sso/nginx.conf infrastructure/outline-spaces-sso/spaces-shell.css infrastructure/outline-spaces-sso/spaces-shell.js infrastructure/shared/tenant-panel.js | sha256sum | cut -d' ' -f1)"
 if [ "$(cat /opt/outline/spaces-sso-revision 2>/dev/null || true)" != "$outline_hash" ]; then
+  install -d -m 0755 /opt/outline/spaces-shell
   install -m 0644 infrastructure/outline-spaces-sso/server.js /opt/outline/spaces-sso/server.js
   install -m 0644 infrastructure/outline-spaces-sso/docker-compose.override.yml /opt/outline/docker-compose.override.yml
-  docker compose -f /opt/outline/docker-compose.yml -f /opt/outline/docker-compose.override.yml up -d --force-recreate spaces-sso
+  install -m 0644 infrastructure/outline-spaces-sso/nginx.conf /opt/outline/spaces-shell/nginx.conf
+  install -m 0644 infrastructure/outline-spaces-sso/spaces-shell.css /opt/outline/spaces-shell/spaces-shell.css
+  install -m 0644 infrastructure/outline-spaces-sso/spaces-shell.js /opt/outline/spaces-shell/spaces-shell.js
+  docker compose -f /opt/outline/docker-compose.yml -f /opt/outline/docker-compose.override.yml up -d --force-recreate spaces-sso spaces-shell
   printf '%s\n' "$outline_hash" > /opt/outline/spaces-sso-revision
 fi
 
-openseo_sso_hash="$(sha256sum infrastructure/openseo-spaces-sso/server.js infrastructure/openseo-spaces-sso/docker-compose.sso.yml | sha256sum | cut -d' ' -f1)"
+openseo_sso_hash="$(sha256sum infrastructure/openseo-spaces-sso/server.js infrastructure/openseo-spaces-sso/docker-compose.sso.yml infrastructure/shared/tenant-panel.js | sha256sum | cut -d' ' -f1)"
 if [ "$(cat /opt/openseo/spaces-sso-revision 2>/dev/null || true)" != "$openseo_sso_hash" ]; then
   install -m 0644 infrastructure/openseo-spaces-sso/server.js /opt/openseo/spaces-sso/server.js
   install -m 0644 infrastructure/openseo-spaces-sso/docker-compose.sso.yml /opt/openseo/docker-compose.sso.yml

@@ -176,13 +176,26 @@ export async function loadWorkspace(session: Session): Promise<Workspace> {
   if (accountResult.error) throw accountResult.error;
 
   const projects = (projectsResult.data ?? []) as Project[];
+  const profile = profileResult.data as Profile;
+  const account = accountResult.data as Account;
+  const activeProjects = projects.filter((project) => project.status === "active");
+  let tabProjectId: string | null = null;
+  try {
+    tabProjectId = window.sessionStorage.getItem(`spaces:active-project:${account.id}`);
+  } catch {
+    // Browser storage can be disabled; the persisted profile remains the fallback.
+  }
+  const activeProjectId = activeProjects.some((project) => project.id === tabProjectId)
+    ? tabProjectId
+    : activeProjects.some((project) => project.id === profile.active_project_id)
+      ? profile.active_project_id
+      : activeProjects[0]?.id ?? null;
   const projectIds = projects.map((project) => project.id);
   const projectServicesResult = projectIds.length
     ? await client.from("project_services").select("*").in("project_id", projectIds)
     : { data: [], error: null };
   if (projectServicesResult.error) throw projectServicesResult.error;
 
-  const activeProjectId = (profileResult.data as Profile).active_project_id;
   const harnessResult = activeProjectId
     ? await client.from("project_harness_settings").select("*").eq("project_id", activeProjectId).maybeSingle()
     : { data: null, error: null };
@@ -194,8 +207,8 @@ export async function loadWorkspace(session: Session): Promise<Workspace> {
   if (harnessVersionResult.error) throw harnessVersionResult.error;
 
   return {
-    profile: profileResult.data as Profile,
-    account: accountResult.data as Account,
+    profile: { ...profile, active_project_id: activeProjectId },
+    account,
     projects,
     services: (servicesResult.data ?? []) as Service[],
     projectServices: (projectServicesResult.data ?? []) as ProjectService[],
@@ -204,12 +217,8 @@ export async function loadWorkspace(session: Session): Promise<Workspace> {
   };
 }
 
-export async function setActiveProject(projectId: string) {
-  const client = requireClient();
-  const { data: userResult, error: userError } = await client.auth.getUser();
-  if (userError || !userResult.user) throw userError ?? new Error("Нужно войти");
-  const { error } = await client.from("profiles").update({ active_project_id: projectId }).eq("id", userResult.user.id);
-  if (error) throw error;
+export function setActiveProjectForTab(accountId: string, projectId: string) {
+  window.sessionStorage.setItem(`spaces:active-project:${accountId}`, projectId);
 }
 
 export async function createProject(input: {

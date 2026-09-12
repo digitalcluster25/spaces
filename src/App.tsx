@@ -43,7 +43,7 @@ import {
   loadAdminData,
   restoreProject,
   saveHarnessUserConfig,
-  setActiveProject,
+  setActiveProjectForTab,
   setServiceEnabled,
   supabase,
   updateProject,
@@ -148,6 +148,8 @@ function AppContent({
       {header}
       {adminRequested ? (
         <SuperadminPage session={session} workspace={workspaceState.workspace} />
+      ) : path === "/launch" ? (
+        <ServiceLaunchPage session={session} authLoading={authLoading} {...workspaceState} />
       ) : path === "/account" ? (
         <AccountPage session={session} {...workspaceState} />
       ) : path === "/reset-password" ? (
@@ -301,23 +303,8 @@ function TenantBar({ session, workspace, onRefresh }: { session: Session; worksp
     : [];
 
   async function changeProject(projectId: string) {
-    await setActiveProject(projectId);
+    setActiveProjectForTab(workspace.account.id, projectId);
     await onRefresh();
-  }
-
-  async function launch(service: Service) {
-    if (!activeProject || !service.base_url) return;
-    const popup = window.open("about:blank", "_blank");
-    if (popup) popup.opener = null;
-    try {
-      const ticket = await createServiceTicket(activeProject.id, service.slug);
-      const next = service.slug === "outline" ? "/home" : "/";
-      const url = service.base_url + "/spaces-sso#ticket=" + encodeURIComponent(ticket) + "&next=" + encodeURIComponent(next);
-      if (popup) popup.location.replace(url);
-      else window.open(url, "_blank", "noopener,noreferrer");
-    } catch {
-      popup?.close();
-    }
   }
 
   const name = workspace.profile.display_name || workspace.profile.email || "Пользователь";
@@ -353,9 +340,9 @@ function TenantBar({ session, workspace, onRefresh }: { session: Session; worksp
         {projectServices.map((connection) => {
           const service = workspace.services.find((item) => item.id === connection.service_id);
           if (!service || service.is_core) return null;
-          return <button key={service.id} type="button" onClick={() => void launch(service)}>{service.name}<ExternalLink size={13} /></button>;
+          return <a key={service.id} href={serviceLaunchHref(activeProject!.id, service.slug)} target="_blank" rel="noopener noreferrer">{service.name}<ExternalLink size={13} /></a>;
         })}
-        {workspace.profile.is_superadmin && <a href="https://superadminko.spaces.community">Superadminko<ExternalLink size={13} /></a>}
+        {workspace.profile.is_superadmin && <a href="https://superadminko.spaces.community" target="_blank" rel="noopener noreferrer">Superadminko<ExternalLink size={13} /></a>}
       </nav>
       <a className="tenantProfile" href="/account">
         <Avatar name={name} url={workspace.profile.avatar_url} />
@@ -363,6 +350,64 @@ function TenantBar({ session, workspace, onRefresh }: { session: Session; worksp
       </a>
     </header>
   );
+}
+
+function serviceLaunchHref(projectId: string, serviceSlug: string) {
+  const params = new URLSearchParams({ project: projectId, service: serviceSlug });
+  return `/launch?${params.toString()}`;
+}
+
+function ServiceLaunchPage({
+  session,
+  authLoading,
+  workspace,
+  loading,
+  error,
+}: {
+  session: Session | null;
+  authLoading: boolean;
+  workspace: Workspace | null;
+  loading: boolean;
+  error: string;
+  refresh: () => Promise<void>;
+}) {
+  const [launchError, setLaunchError] = React.useState("");
+  const started = React.useRef(false);
+
+  React.useEffect(() => {
+    if (authLoading || loading || started.current) return;
+    if (!session) {
+      const redirect = window.location.pathname + window.location.search;
+      window.location.replace(`/login?redirect=${encodeURIComponent(redirect)}`);
+      return;
+    }
+    if (!workspace || error) return;
+
+    const params = new URLSearchParams(window.location.search);
+    const projectId = params.get("project") || "";
+    const serviceSlug = params.get("service") || "";
+    const project = workspace.projects.find((item) => item.id === projectId && item.status === "active");
+    const service = workspace.services.find((item) => item.slug === serviceSlug && item.status === "active");
+    const connection = workspace.projectServices.find((item) => item.project_id === projectId && item.service_id === service?.id);
+    if (!project || !service?.base_url || connection?.status !== "ready") {
+      setLaunchError("Сервис недоступен для выбранного проекта.");
+      return;
+    }
+
+    started.current = true;
+    void createServiceTicket(project.id, service.slug)
+      .then((ticket) => {
+        const next = service.slug === "outline" ? "/home" : "/";
+        window.location.replace(`${service.base_url}/spaces-sso#ticket=${encodeURIComponent(ticket)}&next=${encodeURIComponent(next)}`);
+      })
+      .catch((cause) => {
+        started.current = false;
+        setLaunchError(cause instanceof Error ? cause.message : "Не удалось открыть сервис.");
+      });
+  }, [authLoading, error, loading, session, workspace]);
+
+  if (error || launchError) return <StatePage title="Не удалось открыть сервис" text={launchError || error} action={<a className="button buttonOutline" href="/account">Вернуться к проектам</a>} />;
+  return <StatePage loading title="Открываем сервис" text="Проверяем доступ к выбранному проекту." />;
 }
 
 function Landing() {
@@ -575,7 +620,7 @@ function ProjectDashboard({ session, workspace, refresh }: { session: Session; w
   const visibleProjects = workspace.projects.filter((project) => project.status === tab);
 
   async function chooseProject(project: Project) {
-    await setActiveProject(project.id);
+    setActiveProjectForTab(workspace.account.id, project.id);
     await refresh();
   }
 
@@ -666,22 +711,6 @@ function ProjectWorkspace({ session, project, workspace, refresh }: { session: S
   const connections = workspace.projectServices.filter((item) => item.project_id === project.id);
   const [message, setMessage] = React.useState("");
 
-  async function launch(service: Service) {
-    if (!service.base_url) return;
-    const popup = window.open("about:blank", "_blank");
-    if (popup) popup.opener = null;
-    try {
-      const ticket = await createServiceTicket(project.id, service.slug);
-      const next = service.slug === "outline" ? "/home" : "/";
-      const url = service.base_url + "/spaces-sso#ticket=" + encodeURIComponent(ticket) + "&next=" + encodeURIComponent(next);
-      if (popup) popup.location.replace(url);
-      else window.open(url, "_blank", "noopener,noreferrer");
-    } catch (cause) {
-      popup?.close();
-      setMessage(cause instanceof Error ? cause.message : "Не удалось открыть сервис");
-    }
-  }
-
   async function toggle(service: Service, enabled: boolean) {
     setMessage("");
     try {
@@ -705,7 +734,7 @@ function ProjectWorkspace({ session, project, workspace, refresh }: { session: S
               <div><div className="serviceName"><strong>{service.name}</strong><span className={`status status-${connection?.status ?? "disabled"}`}>{statusLabel(connection?.status)}</span></div><p>{service.description}</p>{connection?.last_error && <small className="fieldError">{connection.last_error}</small>}</div>
               <div className="serviceActions">
                 <label className="switch"><input type="checkbox" checked={Boolean(enabled)} onChange={(event) => void toggle(service, event.target.checked)} /><span /></label>
-                <button className="button buttonOutline" type="button" disabled={connection?.status !== "ready"} onClick={() => void launch(service)}>Открыть<ExternalLink size={15} /></button>
+                {connection?.status === "ready" ? <a className="button buttonOutline" href={serviceLaunchHref(project.id, service.slug)} target="_blank" rel="noopener noreferrer">Открыть<ExternalLink size={15} /></a> : <button className="button buttonOutline" type="button" disabled>Открыть<ExternalLink size={15} /></button>}
                 {service.mcp_url && connection?.status === "ready" && <a className="button buttonGhost" href={service.mcp_url} target="_blank" rel="noreferrer">MCP<ExternalLink size={14} /></a>}
               </div>
             </article>
@@ -828,6 +857,8 @@ function AuthPage({ mode }: { mode: AuthMode }) {
   const [loading, setLoading] = React.useState(false);
   const title = isLogin ? "Вход в Spaces" : isRegister ? "Создать аккаунт Spaces" : "Восстановить пароль";
   const lead = isLogin ? "Один вход для всех сервисов экосистемы." : isRegister ? "Создайте единый аккаунт для проектов и сервисов." : "Отправим ссылку для сброса пароля.";
+  const requestedRedirect = new URLSearchParams(window.location.search).get("redirect");
+  const redirect = requestedRedirect?.startsWith("/") && !requestedRedirect.startsWith("//") ? requestedRedirect : "/account";
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -841,13 +872,13 @@ function AuthPage({ mode }: { mode: AuthMode }) {
         : await supabase.auth.resetPasswordForEmail(email, { redirectTo: `${window.location.origin}/reset-password` });
     setLoading(false);
     if (result.error) return setMessage(result.error.message);
-    if (isLogin) return window.location.assign("/account");
+    if (isLogin) return window.location.assign(redirect);
     setMessage(isRegister ? "Аккаунт создан. Проверьте почту для подтверждения." : "Ссылка отправлена. Проверьте почту.");
   }
 
   async function googleAuth() {
     if (!supabase) return setMessage("Авторизация не подключена.");
-    const { error } = await supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: `${window.location.origin}/account` } });
+    const { error } = await supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: `${window.location.origin}${redirect}` } });
     if (error) setMessage(error.message);
   }
 

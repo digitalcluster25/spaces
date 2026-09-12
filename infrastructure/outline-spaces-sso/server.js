@@ -2,6 +2,7 @@ const http = require("http");
 const crypto = require("crypto");
 const jwt = require("jsonwebtoken");
 const { Pool } = require("pg");
+const { createPanelPage, readSignedContext } = require("/spaces-shared/tenant-panel.js");
 
 const port = Number(process.env.PORT || 3000);
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
@@ -32,6 +33,21 @@ function parseCookies(header = "") {
 function safeNext(value) {
   if (!value || !value.startsWith("/") || value.startsWith("//")) return "/home";
   return value;
+}
+
+function signProjectContext(claims) {
+  const payload = Buffer.from(JSON.stringify({
+    projectId: claims.project_id,
+    projectName: claims.project_name,
+    projectSlug: claims.project_slug,
+    accountName: claims.account_name,
+    userId: claims.user_id,
+    role: claims.role,
+    services: claims.services,
+    exp: Date.now() + 8 * 60 * 60 * 1000,
+  })).toString("base64url");
+  const signature = crypto.createHmac("sha256", serviceSecret).update(payload).digest("base64url");
+  return `${payload}.${signature}`;
 }
 
 function redirect(res, location, status = 302, extraHeaders = {}) {
@@ -252,6 +268,14 @@ const server = http.createServer(async (req, res) => {
       });
       return res.end(ticketPage());
     }
+    if (url.pathname === "/spaces-panel" && req.method === "GET") {
+      res.writeHead(200, {
+        "Content-Type": "text/html; charset=utf-8",
+        "Cache-Control": "no-store",
+        "Content-Security-Policy": "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; frame-ancestors 'self'; base-uri 'none'",
+      });
+      return res.end(createPanelPage(readSignedContext(req, serviceSecret), "outline"));
+    }
     if (url.pathname === "/spaces-internal/provision" && req.method === "POST") {
       if (!isAuthorized(req)) {
         res.writeHead(401, { "Content-Type": "application/json; charset=utf-8" });
@@ -271,9 +295,13 @@ const server = http.createServer(async (req, res) => {
       { id: user.id, expiresAt: expires.toISOString(), type: "session", service: "spaces", projectId: claims.project_id },
       user.jwtSecret,
     );
+    const projectContext = signProjectContext(claims);
     res.writeHead(200, {
       "Content-Type": "application/json; charset=utf-8",
-      "Set-Cookie": `accessToken=${accessToken}; Path=/; HttpOnly; Secure; SameSite=Lax; Expires=${expires.toUTCString()}`,
+      "Set-Cookie": [
+        `accessToken=${accessToken}; Path=/; HttpOnly; Secure; SameSite=Lax; Expires=${expires.toUTCString()}`,
+        `spaces_project_context=${projectContext}; Path=/; HttpOnly; Secure; SameSite=Lax; Expires=${expires.toUTCString()}`,
+      ],
       "Cache-Control": "no-store",
     });
     res.end(JSON.stringify({ next: safeNext(input.next) }));
