@@ -90,16 +90,23 @@ function App() {
 
 function TopBar() {
   const [session, setSession] = React.useState<Session | null>(null);
+  const [authLoading, setAuthLoading] = React.useState(Boolean(supabase));
 
   React.useEffect(() => {
     if (!supabase) {
       return;
     }
 
-    supabase.auth.getSession().then(({ data }) => setSession(data.session));
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session);
+      setAuthLoading(false);
+    });
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, nextSession) => setSession(nextSession));
+    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      setSession(nextSession);
+      setAuthLoading(false);
+    });
 
     return () => subscription.unsubscribe();
   }, []);
@@ -121,7 +128,7 @@ function TopBar() {
         <span>Spaces</span>
       </a>
       <div className="topActions">
-        {session ? (
+        {authLoading ? null : session ? (
           <>
             <span className="userAvatar" aria-label={userName}>
               {avatarUrl ? <img src={avatarUrl} alt="" /> : initials}
