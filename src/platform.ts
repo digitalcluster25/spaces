@@ -18,6 +18,7 @@ export type Profile = {
 
 export type Account = {
   id: string;
+  owner_id: string;
   name: string;
   slug: string;
   account_type: "personal" | "corporate";
@@ -87,6 +88,71 @@ export type Workspace = {
   projectServices: ProjectService[];
   harness: HarnessState | null;
   harnessVersion: HarnessVersion | null;
+};
+
+export type Plan = {
+  id: string;
+  code: string;
+  name: string;
+  price_cents: number;
+  currency: string;
+  billing_mode: string;
+  is_active: boolean;
+  is_public: boolean;
+};
+
+export type PlanLimit = {
+  plan_id: string;
+  key: string;
+  value: number | null;
+  unit: string;
+  status: "active" | "reserve";
+  description: string | null;
+};
+
+export type Subscription = {
+  account_id: string;
+  plan_id: string;
+  status: string;
+  seats: number;
+  current_period_end: string | null;
+  trial_ends_at: string | null;
+};
+
+export type ProvisioningJob = {
+  id: string;
+  project_service_id: string;
+  operation: string;
+  status: string;
+  attempts: number;
+  run_after: string;
+  last_error: string | null;
+  created_at: string;
+};
+
+export type AuditEvent = {
+  id: number;
+  account_id: string | null;
+  project_id: string | null;
+  actor_id: string | null;
+  action: string;
+  target_type: string | null;
+  target_id: string | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
+};
+
+export type AdminData = {
+  profiles: Profile[];
+  accounts: Account[];
+  projects: Project[];
+  services: Service[];
+  plans: Plan[];
+  limits: PlanLimit[];
+  subscriptions: Subscription[];
+  jobs: ProvisioningJob[];
+  audit: AuditEvent[];
+  harnessVersions: HarnessVersion[];
 };
 
 function requireClient() {
@@ -200,5 +266,95 @@ export async function saveHarnessUserConfig(projectId: string, config: Record<st
 
 export async function acceptHarnessVersion(projectId: string) {
   const { error } = await requireClient().rpc("accept_harness_version", { p_project_id: projectId });
+  if (error) throw error;
+}
+
+export async function loadAdminData(): Promise<AdminData> {
+  const client = requireClient();
+  const results = await Promise.all([
+    client.from("profiles").select("*").order("created_at", { ascending: false }),
+    client.from("accounts").select("*").order("created_at", { ascending: false }),
+    client.from("projects").select("*").order("created_at", { ascending: false }),
+    client.from("spaces_services").select("*").order("sort_order"),
+    client.from("plans").select("*").order("price_cents"),
+    client.from("plan_limits").select("*").order("key"),
+    client.from("account_subscriptions").select("*"),
+    client.from("provisioning_jobs").select("*").order("created_at", { ascending: false }).limit(100),
+    client.from("audit_events").select("*").order("created_at", { ascending: false }).limit(200),
+    client.from("harness_versions").select("*").order("version", { ascending: false }),
+  ]);
+  const failed = results.find((result) => result.error);
+  if (failed?.error) throw failed.error;
+  return {
+    profiles: (results[0].data ?? []) as Profile[],
+    accounts: (results[1].data ?? []) as Account[],
+    projects: (results[2].data ?? []) as Project[],
+    services: (results[3].data ?? []) as Service[],
+    plans: (results[4].data ?? []) as Plan[],
+    limits: (results[5].data ?? []) as PlanLimit[],
+    subscriptions: (results[6].data ?? []) as Subscription[],
+    jobs: (results[7].data ?? []) as ProvisioningJob[],
+    audit: (results[8].data ?? []) as AuditEvent[],
+    harnessVersions: (results[9].data ?? []) as HarnessVersion[],
+  };
+}
+
+export async function adminUpdatePlanLimit(planCode: string, limit: Omit<PlanLimit, "plan_id">) {
+  const { error } = await requireClient().rpc("admin_update_plan_limit", {
+    p_plan_code: planCode,
+    p_key: limit.key,
+    p_value: limit.value,
+    p_unit: limit.unit,
+    p_status: limit.status,
+    p_description: limit.description,
+  });
+  if (error) throw error;
+}
+
+export async function adminSetAccountStatus(accountId: string, status: Account["status"]) {
+  const { error } = await requireClient().rpc("admin_set_account_status", { p_account_id: accountId, p_status: status });
+  if (error) throw error;
+}
+
+export async function adminSetSubscription(accountId: string, planCode: string, status: string, seats: number) {
+  const { error } = await requireClient().rpc("admin_set_subscription", {
+    p_account_id: accountId,
+    p_plan_code: planCode,
+    p_status: status,
+    p_seats: seats,
+  });
+  if (error) throw error;
+}
+
+export async function adminSaveService(service: Service) {
+  const url = service.base_url ? new URL(service.base_url) : null;
+  const { error } = await requireClient().rpc("admin_save_service", {
+    p_service_id: service.id || null,
+    p_slug: service.slug,
+    p_name: service.name,
+    p_subdomain: url?.hostname ?? service.slug,
+    p_description: service.description,
+    p_status: service.status,
+    p_base_url: service.base_url,
+    p_mcp_url: service.mcp_url,
+    p_auth_mode: "spaces_ticket",
+    p_capabilities: {},
+    p_sort_order: service.sort_order,
+  });
+  if (error) throw error;
+}
+
+export async function adminRetryJob(jobId: string) {
+  const { error } = await requireClient().rpc("admin_retry_provisioning_job", { p_job_id: jobId });
+  if (error) throw error;
+}
+
+export async function adminPublishHarness(adminConfig: Record<string, unknown>, testReport: Record<string, unknown>, gitRevision?: string) {
+  const { error } = await requireClient().rpc("publish_harness_version", {
+    p_template_key: "spaces-core",
+    p_admin_config: adminConfig,
+    p_test_report: testReport,
+    p_git_revision: gitRevision || null,
+  });
   if (error) throw error;
 }

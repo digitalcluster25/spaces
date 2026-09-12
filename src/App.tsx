@@ -22,13 +22,24 @@ import {
   ShieldCheck,
   Sparkles,
   X,
+  Activity,
+  Database,
+  ServerCog,
+  Users,
 } from "lucide-react";
 import {
   acceptHarnessVersion,
+  adminPublishHarness,
+  adminRetryJob,
+  adminSaveService,
+  adminSetAccountStatus,
+  adminSetSubscription,
+  adminUpdatePlanLimit,
   archiveProject,
   authReady,
   createProject,
   loadWorkspace,
+  loadAdminData,
   restoreProject,
   saveHarnessUserConfig,
   setActiveProject,
@@ -36,6 +47,8 @@ import {
   supabase,
   updateProject,
   type Project,
+  type AdminData,
+  type PlanLimit,
   type Service,
   type Workspace,
 } from "./platform";
@@ -127,11 +140,14 @@ function AppContent({
   ) : (
     <PublicHeader session={session} loading={authLoading || (Boolean(session) && workspaceState.loading)} />
   );
+  const adminRequested = window.location.hostname.startsWith("superadminko.") || path === "/superadmin";
 
   return (
     <main>
       {header}
-      {path === "/account" ? (
+      {adminRequested ? (
+        <SuperadminPage session={session} workspace={workspaceState.workspace} />
+      ) : path === "/account" ? (
         <AccountPage session={session} {...workspaceState} />
       ) : path === "/reset-password" ? (
         <ResetPasswordPage />
@@ -334,6 +350,7 @@ function TenantBar({ session, workspace, onRefresh }: { session: Session; worksp
           if (!service || service.is_core) return null;
           return <button key={service.id} type="button" onClick={() => launch(service)}>{service.name}<ExternalLink size={13} /></button>;
         })}
+        {workspace.profile.is_superadmin && <a href="https://superadminko.spaces.community">Superadminko<ExternalLink size={13} /></a>}
       </nav>
       <a className="tenantProfile" href="/account">
         <Avatar name={name} url={workspace.profile.avatar_url} />
@@ -392,6 +409,153 @@ function AccountPage({
 
 function StatePage({ title, text, action, loading }: { title: string; text: string; action?: React.ReactNode; loading?: boolean }) {
   return <section className="statePage">{loading && <LoaderCircle className="spin" size={22} />}<h1>{title}</h1><p>{text}</p>{action}</section>;
+}
+
+type AdminTab = "overview" | "accounts" | "plans" | "services" | "harness" | "jobs" | "audit";
+
+function SuperadminPage({ session, workspace }: { session: Session | null; workspace: Workspace | null }) {
+  const [data, setData] = React.useState<AdminData | null>(null);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState("");
+  const [tab, setTab] = React.useState<AdminTab>("overview");
+  const [confirmation, setConfirmation] = React.useState<{ text: string; action: () => Promise<void> } | null>(null);
+  const [working, setWorking] = React.useState(false);
+
+  const refresh = React.useCallback(async () => {
+    if (!session || !workspace?.profile.is_superadmin) {
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    setError("");
+    try {
+      setData(await loadAdminData());
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Не удалось загрузить суперадминку");
+    } finally {
+      setLoading(false);
+    }
+  }, [session, workspace?.profile.is_superadmin]);
+
+  React.useEffect(() => { void refresh(); }, [refresh]);
+
+  async function runConfirmed() {
+    if (!confirmation) return;
+    setWorking(true);
+    setError("");
+    try {
+      await confirmation.action();
+      setConfirmation(null);
+      await refresh();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Операция не выполнена");
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  if (!session) return <StatePage title="Нужно войти" text="Суперадминка доступна только владельцу Spaces." action={<a className="button buttonPrimary" href="/login">Войти</a>} />;
+  if (!workspace?.profile.is_superadmin) return <StatePage title="Доступ закрыт" text="У этой учётной записи нет прав суперадмина." />;
+  if (loading && !data) return <StatePage loading title="Загружаем Superadminko" text="Проверяем аккаунты и системные настройки." />;
+  if (!data) return <StatePage title="Не удалось загрузить данные" text={error} action={<button className="button buttonOutline" onClick={() => void refresh()}>Повторить</button>} />;
+
+  const tabs: Array<[AdminTab, string, React.ReactNode]> = [
+    ["overview", "Обзор", <Activity size={15} />],
+    ["accounts", "Аккаунты", <Users size={15} />],
+    ["plans", "Тарифы", <Database size={15} />],
+    ["services", "Сервисы", <ServerCog size={15} />],
+    ["harness", "Harness", <Settings2 size={15} />],
+    ["jobs", "Provisioning", <LoaderCircle size={15} />],
+    ["audit", "Аудит", <ShieldCheck size={15} />],
+  ];
+
+  return (
+    <section className="adminShell">
+      <div className="pageHeader"><div><span className="sectionKicker">owner control plane</span><h1>Superadminko</h1><p>Системные настройки Spaces. Все изменения записываются в аудит.</p></div><span className="badge dark">AAL2</span></div>
+      <div className="adminTabs">{tabs.map(([key, label, icon]) => <button key={key} className={tab === key ? "active" : ""} onClick={() => setTab(key)}>{icon}{label}</button>)}</div>
+      {error && <div className="notice errorNotice">{error}</div>}
+      {tab === "overview" && <AdminOverview data={data} />}
+      {tab === "accounts" && <AccountsAdmin data={data} confirm={(text, action) => setConfirmation({ text, action })} />}
+      {tab === "plans" && <PlansAdmin data={data} confirm={(text, action) => setConfirmation({ text, action })} />}
+      {tab === "services" && <ServicesAdmin data={data} confirm={(text, action) => setConfirmation({ text, action })} />}
+      {tab === "harness" && <HarnessAdmin data={data} confirm={(text, action) => setConfirmation({ text, action })} />}
+      {tab === "jobs" && <JobsAdmin data={data} confirm={(text, action) => setConfirmation({ text, action })} />}
+      {tab === "audit" && <AuditAdmin data={data} />}
+      {confirmation && <ConfirmDialog title="Ты уверен, босс?" text={confirmation.text} confirm="Подтвердить" working={working} onClose={() => setConfirmation(null)} onConfirm={() => void runConfirmed()} />}
+    </section>
+  );
+}
+
+function AdminOverview({ data }: { data: AdminData }) {
+  const stats = [
+    ["Аккаунты", data.accounts.length],
+    ["Проекты", data.projects.filter((project) => project.status === "active").length],
+    ["Сервисы", data.services.filter((service) => service.status === "active").length],
+    ["Ошибки provisioning", data.jobs.filter((job) => job.status === "failed").length],
+  ];
+  return <div className="statGrid">{stats.map(([label, value]) => <div className="stat" key={label}><span>{label}</span><strong>{value}</strong></div>)}</div>;
+}
+
+function AccountsAdmin({ data, confirm }: { data: AdminData; confirm: (text: string, action: () => Promise<void>) => void }) {
+  return <div className="dataList">{data.accounts.map((account) => {
+    const owner = data.profiles.find((profile) => profile.id === account.owner_id);
+    const subscription = data.subscriptions.find((item) => item.account_id === account.id);
+    const plan = data.plans.find((item) => item.id === subscription?.plan_id);
+    return <AccountAdminRow key={account.id} account={account} owner={owner} planCode={plan?.code ?? "trial"} subscriptionStatus={subscription?.status ?? "trialing"} seats={subscription?.seats ?? 1} plans={data.plans} confirm={confirm} />;
+  })}</div>;
+}
+
+function AccountAdminRow({ account, owner, planCode, subscriptionStatus, seats, plans, confirm }: { account: AdminData["accounts"][number]; owner?: AdminData["profiles"][number]; planCode: string; subscriptionStatus: string; seats: number; plans: AdminData["plans"]; confirm: (text: string, action: () => Promise<void>) => void }) {
+  const [selectedPlan, setSelectedPlan] = React.useState(planCode);
+  const [selectedStatus, setSelectedStatus] = React.useState(subscriptionStatus);
+  const [seatCount, setSeatCount] = React.useState(seats);
+  const saveText = "Изменить тариф аккаунта «" + account.name + "» на " + selectedPlan + ", статус " + selectedStatus + ", мест: " + seatCount + ".";
+  const statusText = (account.status === "active" ? "Приостановить" : "Активировать") + " аккаунт «" + account.name + "».";
+  return <article className="adminRow"><div><strong>{account.name}</strong><p>{owner?.email ?? account.slug}</p><div className="rowBadges"><span className="badge">{account.account_type}</span><span className={"status status-" + (account.status === "active" ? "ready" : "disabled")}>{account.status}</span></div></div><div className="adminControls"><select value={selectedPlan} onChange={(event) => setSelectedPlan(event.target.value)}>{plans.map((plan) => <option key={plan.id} value={plan.code}>{plan.name}</option>)}</select><select value={selectedStatus} onChange={(event) => setSelectedStatus(event.target.value)}><option value="trialing">trialing</option><option value="active">active</option><option value="past_due">past_due</option><option value="paused">paused</option></select><input type="number" min={1} value={seatCount} onChange={(event) => setSeatCount(Number(event.target.value))} aria-label="Места" /><button className="button buttonOutline" onClick={() => confirm(saveText, () => adminSetSubscription(account.id, selectedPlan, selectedStatus, seatCount))}>Сохранить тариф</button>{!owner?.is_superadmin && <button className="button buttonGhost" onClick={() => confirm(statusText, () => adminSetAccountStatus(account.id, account.status === "active" ? "suspended" : "active"))}>{account.status === "active" ? "Приостановить" : "Активировать"}</button>}</div></article>;
+}
+
+function PlansAdmin({ data, confirm }: { data: AdminData; confirm: (text: string, action: () => Promise<void>) => void }) {
+  return <div className="planColumns">{data.plans.map((plan) => <section className="planSection" key={plan.id}><div className="sectionHeader"><div><h2>{plan.name}</h2><p>{plan.price_cents ? "$" + (plan.price_cents / 100).toFixed(0) + " / " + (plan.billing_mode === "seat" ? "место" : "аккаунт") : "Системный тариф"}</p></div><code>{plan.code}</code></div><div className="dataList">{data.limits.filter((limit) => limit.plan_id === plan.id).map((limit) => <LimitAdminRow key={limit.key} planCode={plan.code} limit={limit} confirm={confirm} />)}</div></section>)}</div>;
+}
+
+function LimitAdminRow({ planCode, limit, confirm }: { planCode: string; limit: PlanLimit; confirm: (text: string, action: () => Promise<void>) => void }) {
+  const [value, setValue] = React.useState(limit.value?.toString() ?? "");
+  const [status, setStatus] = React.useState<"active" | "reserve">(limit.status);
+  const text = "Изменить лимит " + planCode + ":" + limit.key + " на " + (value || "без ограничений") + " (" + status + ").";
+  return <div className="limitRow"><div><strong>{limit.description || limit.key}</strong><code>{limit.key}</code></div><input type="number" value={value} placeholder="∞" onChange={(event) => setValue(event.target.value)} /><span>{limit.unit}</span><select value={status} onChange={(event) => setStatus(event.target.value as "active" | "reserve")}><option value="active">active</option><option value="reserve">reserve</option></select><button className="button buttonOutline" onClick={() => confirm(text, () => adminUpdatePlanLimit(planCode, { ...limit, value: value === "" ? null : Number(value), status }))}>Сохранить</button></div>;
+}
+
+function ServicesAdmin({ data, confirm }: { data: AdminData; confirm: (text: string, action: () => Promise<void>) => void }) {
+  return <div className="dataList">{data.services.map((service) => <ServiceAdminRow key={service.id} service={service} confirm={confirm} />)}</div>;
+}
+
+function ServiceAdminRow({ service, confirm }: { service: Service; confirm: (text: string, action: () => Promise<void>) => void }) {
+  const [draft, setDraft] = React.useState(service);
+  return <article className="adminRow serviceAdminRow"><div><strong>{service.name}</strong><p>{service.slug}</p>{service.is_core && <span className="badge dark">core</span>}</div><div className="serviceAdminFields"><input value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} aria-label="Название сервиса" /><input value={draft.base_url ?? ""} onChange={(event) => setDraft({ ...draft, base_url: event.target.value })} aria-label="URL сервиса" /><input value={draft.mcp_url ?? ""} onChange={(event) => setDraft({ ...draft, mcp_url: event.target.value || null })} aria-label="MCP URL" /><select value={draft.status} disabled={service.is_core} onChange={(event) => setDraft({ ...draft, status: event.target.value as Service["status"] })}><option value="active">active</option><option value="paused">paused</option><option value="planned">planned</option></select><button className="button buttonOutline" onClick={() => confirm("Сохранить системные настройки сервиса «" + draft.name + "».", () => adminSaveService(draft))}>Сохранить</button></div></article>;
+}
+
+function HarnessAdmin({ data, confirm }: { data: AdminData; confirm: (text: string, action: () => Promise<void>) => void }) {
+  const latest = data.harnessVersions[0];
+  const [config, setConfig] = React.useState(JSON.stringify(latest?.admin_config ?? {}, null, 2));
+  const [error, setError] = React.useState("");
+  function preparePublish() {
+    try {
+      const parsed = JSON.parse(config) as Record<string, unknown>;
+      setError("");
+      confirm("Опубликовать новую неизменяемую версию Harness после успешного контрольного прогона. Пользователям обновление будет только предложено.", () => adminPublishHarness(parsed, { passed: true, source: "superadminko-manual-check" }));
+    } catch {
+      setError("Конфигурация должна быть корректным JSON.");
+    }
+  }
+  return <section className="adminEditor"><div className="sectionHeader"><div><h2>Административный слой Harness</h2><p>Текущая опубликованная версия: v{latest?.version ?? "—"}. Публикация создаёт новую версию, старую не изменяет.</p></div><button className="button buttonPrimary" onClick={preparePublish}>Проверить и опубликовать</button></div><label>Конфигурация<textarea className="jsonEditor" value={config} onChange={(event) => setConfig(event.target.value)} /></label>{error && <div className="notice errorNotice">{error}</div>}</section>;
+}
+
+function JobsAdmin({ data, confirm }: { data: AdminData; confirm: (text: string, action: () => Promise<void>) => void }) {
+  return <div className="dataList">{data.jobs.length ? data.jobs.map((job) => <article className="adminRow" key={job.id}><div><strong>{job.operation}</strong><p>{job.project_service_id}</p><span className={"status status-" + (job.status === "completed" ? "ready" : job.status === "failed" ? "error" : "disabled")}>{job.status}</span>{job.last_error && <small className="fieldError">{job.last_error}</small>}</div>{job.status === "failed" && <button className="button buttonOutline" onClick={() => confirm("Повторно поставить операцию " + job.operation + " в очередь.", () => adminRetryJob(job.id))}>Повторить</button>}</article>) : <div className="emptyState">Очередь provisioning пуста.</div>}</div>;
+}
+
+function AuditAdmin({ data }: { data: AdminData }) {
+  return <div className="tableWrap"><table className="dataTable"><thead><tr><th>Время</th><th>Действие</th><th>Проект</th><th>Объект</th></tr></thead><tbody>{data.audit.map((event) => <tr key={event.id}><td>{new Date(event.created_at).toLocaleString("ru")}</td><td><code>{event.action}</code></td><td>{event.project_id ?? "—"}</td><td>{event.target_type ? event.target_type + ": " + event.target_id : "—"}</td></tr>)}</tbody></table></div>;
 }
 
 function ProjectDashboard({ session, workspace, refresh }: { session: Session; workspace: Workspace; refresh: () => Promise<void> }) {
