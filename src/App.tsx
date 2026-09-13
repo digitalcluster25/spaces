@@ -129,7 +129,7 @@ export function App() {
   if (path === "/auth-bridge" && !onAdminHost) return <AuthBridge session={session} loading={authLoading} />;
   if (onAdminHost && !session) return <SuperadminSessionBridge />;
 
-  if (session && workspaceState.workspace?.profile.is_superadmin) {
+  if (session?.user.email?.toLowerCase() === "digitalcluster25@gmail.com") {
     return (
       <MfaBoundary session={session}>
         <AppContent session={session} authLoading={authLoading} workspaceState={workspaceState} path={path} authMode={authMode} />
