@@ -7,7 +7,9 @@
     "dev": "vite --host 0.0.0.0",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host 0.0.0.0",
-    "test:e2e": "playwright test"
+    "test:harness": "npm --prefix harness test",
+    "test:e2e": "playwright test",
+    "test": "npm run test:harness && npm run test:e2e"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.54.0",

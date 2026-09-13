@@ -1,5 +1,7 @@
 import React from "react";
 import type { Session } from "@supabase/supabase-js";
+import harnessDefaults from "../harness/defaults.json";
+import { evaluateHarnessConfig, mergeHarnessConfig, type HarnessReport } from "../harness/evaluate.mjs";
 import {
   Archive,
   ArrowRight,
@@ -662,18 +664,34 @@ function ServiceAdminRow({ service, confirm, onCancel }: { service: Service; con
 
 function HarnessAdmin({ data, confirm }: { data: AdminData; confirm: (text: string, action: () => Promise<void>) => void }) {
   const latest = data.harnessVersions[0];
-  const [config, setConfig] = React.useState(JSON.stringify(latest?.admin_config ?? {}, null, 2));
-  const [error, setError] = React.useState("");
-  function preparePublish() {
-    try {
-      const parsed = JSON.parse(config) as Record<string, unknown>;
-      setError("");
-      confirm("Опубликовать новую неизменяемую версию Harness после успешного контрольного прогона. Пользователям обновление будет только предложено.", () => adminPublishHarness(parsed, { passed: true, source: "superadminko-manual-check" }));
-    } catch {
-      setError("Конфигурация должна быть корректным JSON.");
-    }
+  const [config, setConfig] = React.useState<Record<string, any>>(() => mergeHarnessConfig(harnessDefaults, latest?.admin_config));
+  const [report, setReport] = React.useState<HarnessReport | null>(null);
+  const getValue = (path: string) => path.split(".").reduce<any>((value, key) => value?.[key], config);
+  function setValue(path: string, value: unknown) {
+    setReport(null);
+    setConfig((current) => {
+      const next = structuredClone(current);
+      const keys = path.split(".");
+      const leaf = keys.pop()!;
+      const parent = keys.reduce<Record<string, any>>((value, key) => value[key] ??= {}, next);
+      parent[leaf] = value;
+      return next;
+    });
   }
-  return <section className="adminEditor"><div className="sectionHeader"><div><h2>Административный слой Harness</h2><p>Текущая опубликованная версия: v{latest?.version ?? "—"}. Публикация создаёт новую версию, старую не изменяет.</p></div><button className="button buttonPrimary" onClick={preparePublish}>Проверить и опубликовать</button></div><label>Конфигурация<textarea className="jsonEditor" value={config} onChange={(event) => setConfig(event.target.value)} /></label>{error && <div className="notice errorNotice">{error}</div>}</section>;
+  function preparePublish() {
+    const nextReport = evaluateHarnessConfig(config);
+    setReport(nextReport);
+    if (!nextReport.passed) return;
+    confirm(`Опубликовать проверенную версию Harness из Git ${__APP_REVISION__}. Проект Spaces получит её сразу, остальным пользователям обновление будет только предложено.`, () => adminPublishHarness(config, nextReport, __APP_REVISION__));
+  }
+
+  const flagGroups: Array<[string, string, Array<[string, string]>]> = [
+    ["security", "Безопасность", [["tenant_isolation", "Изоляция проектов"], ["least_privilege", "Минимальные права"], ["secret_redaction", "Скрывать секреты"], ["destructive_action_confirmation", "Подтверждать опасные действия"], ["prompt_injection_defense", "Защита от prompt injection"], ["external_content_untrusted", "Внешний контент не доверенный"], ["data_minimization", "Минимизация данных"], ["audit_required", "Обязательный аудит"]]],
+    ["quality", "Качество", [["require_acceptance_criteria", "Критерии приёмки"], ["require_tests", "Обязательные тесты"], ["require_production_check", "Проверка production"], ["require_source_verification", "Проверка источников"], ["disclose_uncertainty", "Сообщать неопределённость"], ["task_completion_required", "Доводить задачу до результата"]]],
+    ["tooling", "Работа с инструментами", [["verify_after_write", "Проверять после изменений"], ["retry_transient_failures", "Повторять временные сбои"], ["record_audit_events", "Записывать аудит"], ["browser_visual_qa", "Визуальная проверка браузером"], ["protect_existing_changes", "Беречь существующие изменения"]]],
+  ];
+
+  return <section className="adminEditor"><div className="sectionHeader"><div><h2>Административный слой Harness</h2><p>Текущая версия v{latest?.version ?? "—"}, Git {latest?.git_revision ?? "без привязки"}. Каждая публикация неизменяема.</p></div><button className="button buttonPrimary" onClick={preparePublish}>Проверить и опубликовать</button></div><div className="harnessAdminGrid"><section className="harnessGroup"><h3>Назначение</h3><label>Название<input value={String(getValue("identity.name") ?? "")} onChange={(event) => setValue("identity.name", event.target.value)} /></label><label>Назначение<textarea value={String(getValue("identity.purpose") ?? "")} onChange={(event) => setValue("identity.purpose", event.target.value)} /></label></section><section className="harnessGroup wide"><h3>Главные инструкции</h3><label>Системный промпт<textarea className="promptEditor" value={String(getValue("instructions.system_prompt") ?? "")} onChange={(event) => setValue("instructions.system_prompt", event.target.value)} /></label><label>Правила выполнения<textarea value={String(getValue("instructions.developer_rules") ?? "")} onChange={(event) => setValue("instructions.developer_rules", event.target.value)} /></label><label>Порядок приоритетов<textarea value={(getValue("priority") ?? []).join("\n")} onChange={(event) => setValue("priority", event.target.value.split("\n").map((item) => item.trim()).filter(Boolean))} /></label></section>{flagGroups.map(([group, title, fields]) => <section className="harnessGroup" key={group}><h3>{title}</h3><div className="flagGrid">{fields.map(([key, label]) => <label className="flagRow" key={key}><input type="checkbox" checked={getValue(`${group}.${key}`) === true} onChange={(event) => setValue(`${group}.${key}`, event.target.checked)} /><span>{label}</span></label>)}</div></section>)}<section className="harnessGroup"><h3>Ответы и ресурсы</h3><div className="runtimeGrid"><label>Язык<input value={String(getValue("response.language") ?? "ru")} onChange={(event) => setValue("response.language", event.target.value)} /></label><label>Подробность<select value={String(getValue("response.detail") ?? "concise")} onChange={(event) => setValue("response.detail", event.target.value)}><option value="concise">Кратко</option><option value="balanced">Сбалансированно</option><option value="detailed">Подробно</option></select></label><label>Уровень рассуждения<select value={String(getValue("runtime.reasoning_effort") ?? "high")} onChange={(event) => setValue("runtime.reasoning_effort", event.target.value)}><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="xhigh">XHigh</option></select></label><label>Повторы<input type="number" min={0} max={10} value={Number(getValue("runtime.max_retries") ?? 3)} onChange={(event) => setValue("runtime.max_retries", Number(event.target.value))} /></label></div><label>Политика контекста<textarea value={String(getValue("runtime.context_policy") ?? "")} onChange={(event) => setValue("runtime.context_policy", event.target.value)} /></label></section></div>{report && <div className={`evalReport ${report.passed ? "passed" : "failed"}`}><strong>{report.passed ? "Все проверки пройдены" : "Публикация заблокирована"}</strong>{report.checks.filter((check) => !check.passed).map((check) => <p key={check.id}>{check.message}</p>)}</div>}<div className="notice"><ShieldCheck size={16} />База повторно проверит конфигурацию и Git-ревизию. Подменить результат проверки в браузере недостаточно.</div></section>;
 }
 
 function JobsAdmin({ data, confirm }: { data: AdminData; confirm: (text: string, action: () => Promise<void>) => void }) {
@@ -920,9 +938,17 @@ function HarnessPanel({ project, workspace, refresh }: { project: Project; works
   const [message, setMessage] = React.useState("");
   const fields = [
     ["system_context", "Системный контекст", "Цели, терминология и важные ограничения проекта"],
+    ["objectives", "Цели проекта", "Какие результаты и метрики считаются важными"],
+    ["domain_terms", "Термины и сущности", "Названия продуктов, ролей, процессов и принятая терминология"],
     ["acceptance_criteria", "Критерии результата", "Как проверить, что задача выполнена полностью"],
     ["accuracy_rules", "Требования к точности", "Источники, перепроверка и допустимая неопределённость"],
+    ["trusted_sources", "Доверенные источники", "Документы, базы и сайты, которым можно доверять"],
     ["response_preferences", "Предпочтения ответа", "Язык, тон, формат и степень подробности"],
+    ["forbidden_actions", "Запрещённые действия", "Что агент не должен делать даже без технического запрета"],
+    ["tool_preferences", "Предпочтения инструментов", "Какие сервисы и инструменты использовать в первую очередь"],
+    ["required_deliverables", "Обязательные результаты", "Файлы, отчёты, проверки и доказательства выполнения"],
+    ["memory_notes", "Память проекта", "Что важно сохранять как долгосрочный контекст проекта"],
+    ["example_outputs", "Эталонные примеры", "Примеры ответов и результатов, которые считаются качественными"],
   ] as const;
 
   React.useEffect(() => setConfig(initial), [workspace.harness?.project_id, workspace.harness?.user_config]);

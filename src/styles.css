@@ -165,7 +165,21 @@ code { padding: 3px 6px; border: 1px solid var(--border); border-radius: 4px; ba
 .authBridgeFrame { position: fixed; width: 1px; height: 1px; border: 0; opacity: 0; pointer-events: none; }
 .adminEditor { padding: 16px; border: 1px solid var(--border); border-radius: var(--radius); }
 .adminEditor > label { display: grid; gap: 8px; font-size: .8125rem; font-weight: 600; }
-.jsonEditor { min-height: 480px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .8125rem; }
+.harnessAdminGrid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 20px; }
+.harnessGroup { display: grid; align-content: start; gap: 10px; padding-top: 14px; border-top: 1px solid var(--border); }
+.harnessGroup.wide { grid-column: 1 / -1; }
+.harnessGroup h3 { margin: 0; }
+.harnessGroup > label, .runtimeGrid label { display: grid; gap: 6px; font-size: .8125rem; font-weight: 600; }
+.promptEditor { min-height: 150px; }
+.flagGrid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 7px 14px; }
+.flagRow { display: flex; align-items: center; gap: 8px; font-size: .8125rem; }
+.flagRow input { width: 16px; min-height: 16px; accent-color: var(--primary); }
+.runtimeGrid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }
+.runtimeGrid select { min-height: 40px; padding: 0 9px; border: 1px solid var(--input); border-radius: var(--radius); background: #fff; }
+.evalReport { margin-top: 14px; padding: 12px; border: 1px solid var(--border); border-radius: var(--radius); font-size: .8125rem; }
+.evalReport.passed { border-color: var(--foreground); }
+.evalReport.failed { color: var(--danger); border-color: #fecaca; background: #fef2f2; }
+.evalReport p { margin: 5px 0 0; color: inherit; }
 .tableWrap { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius); }
 .dataTable { width: 100%; border-collapse: collapse; font-size: .8125rem; }
 .dataTable th, .dataTable td { padding: 10px 12px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; white-space: nowrap; }
@@ -301,6 +315,9 @@ legend { padding: 0 4px; font-size: .8125rem; font-weight: 600; }
   .serviceRow { grid-template-columns: 1fr; }
   .serviceActions { justify-content: flex-start; flex-wrap: wrap; }
   .harnessGrid { grid-template-columns: 1fr; }
+  .harnessAdminGrid { grid-template-columns: 1fr; }
+  .harnessGroup.wide { grid-column: auto; }
+  .flagGrid, .runtimeGrid { grid-template-columns: 1fr; }
   .mcpCreate, .secretReveal { grid-template-columns: 1fr; align-items: stretch; }
   .secretReveal .iconButton { justify-self: end; }
   .qrBlock { grid-template-columns: 1fr; }

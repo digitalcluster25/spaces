@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://spaces.community/schemas/harness-v1.json",
+  "title": "Spaces Harness",
+  "type": "object",
+  "required": ["schema_version", "identity", "instructions", "priority", "security", "quality", "tooling", "response", "runtime", "memory"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "identity": {
+      "type": "object",
+      "required": ["name", "purpose"],
+      "properties": { "name": { "type": "string", "minLength": 1 }, "purpose": { "type": "string", "minLength": 20 } }
+    },
+    "instructions": {
+      "type": "object",
+      "required": ["system_prompt", "developer_rules"],
+      "properties": { "system_prompt": { "type": "string", "minLength": 80 }, "developer_rules": { "type": "string", "minLength": 40 } }
+    },
+    "priority": { "type": "array", "minItems": 5, "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+    "security": { "$ref": "#/$defs/configObject" },
+    "quality": { "$ref": "#/$defs/configObject" },
+    "tooling": { "$ref": "#/$defs/configObject" },
+    "response": { "$ref": "#/$defs/configObject" },
+    "runtime": {
+      "type": "object",
+      "required": ["reasoning_effort", "max_retries", "context_policy"],
+      "properties": {
+        "reasoning_effort": { "enum": ["low", "medium", "high", "xhigh"] },
+        "max_retries": { "type": "integer", "minimum": 0, "maximum": 10 },
+        "context_policy": { "type": "string", "minLength": 20 }
+      }
+    },
+    "memory": { "$ref": "#/$defs/configObject" }
+  },
+  "$defs": {
+    "configObject": { "type": "object", "additionalProperties": { "type": ["boolean", "string", "number"] } }
+  }
+}

@@ -79,6 +79,7 @@ export type HarnessVersion = {
   id: string;
   version: number;
   admin_config: Record<string, unknown>;
+  git_revision: string | null;
   status: string;
   test_report: Record<string, unknown> | null;
 };
