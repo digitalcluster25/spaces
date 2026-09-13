@@ -32,8 +32,10 @@ import {
 import {
   acceptHarnessVersion,
   adminPublishHarness,
+  adminDeleteAuditPeriod,
   adminRetryJob,
   adminSaveService,
+  adminSetAccountLimit,
   adminSetAccountStatus,
   adminSetSubscription,
   adminUpdatePlanLimit,
@@ -113,8 +115,12 @@ export function App() {
   const { session, loading: authLoading } = useSession();
   const workspaceState = useWorkspace(session);
   const path = window.location.pathname;
+  const onAdminHost = window.location.hostname.startsWith("superadminko.");
   const authMode: AuthMode | null =
     path === "/login" ? "login" : path === "/register" ? "register" : path === "/forgot" ? "forgot" : null;
+
+  if (path === "/auth-bridge" && !onAdminHost) return <AuthBridge session={session} loading={authLoading} />;
+  if (onAdminHost && !session) return <SuperadminSessionBridge />;
 
   if (session && workspaceState.workspace?.profile.is_superadmin) {
     return (
@@ -125,6 +131,44 @@ export function App() {
   }
 
   return <AppContent session={session} authLoading={authLoading} workspaceState={workspaceState} path={path} authMode={authMode} />;
+}
+
+function AuthBridge({ session, loading }: { session: Session | null; loading: boolean }) {
+  React.useEffect(() => {
+    async function respond(event: MessageEvent) {
+      if (event.origin !== "https://superadminko.spaces.community" || event.data?.type !== "spaces-auth-request") return;
+      if (loading) return;
+      if (!session || !supabase) return event.source?.postMessage({ type: "spaces-auth-response", status: "signed_out" }, { targetOrigin: event.origin });
+      const { data, error } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+      if (error || data.currentLevel !== "aal2") return event.source?.postMessage({ type: "spaces-auth-response", status: "mfa_required" }, { targetOrigin: event.origin });
+      event.source?.postMessage({ type: "spaces-auth-response", status: "ready", accessToken: session.access_token, refreshToken: session.refresh_token }, { targetOrigin: event.origin });
+    }
+    window.addEventListener("message", respond);
+    return () => window.removeEventListener("message", respond);
+  }, [loading, session]);
+  return <StatePage loading title="Соединяем с Superadminko" text="Передаём защищённую сессию владельца." />;
+}
+
+function SuperadminSessionBridge() {
+  const [message, setMessage] = React.useState("Получаем единую сессию Spaces.");
+  const frame = React.useRef<HTMLIFrameElement>(null);
+
+  React.useEffect(() => {
+    const request = () => frame.current?.contentWindow?.postMessage({ type: "spaces-auth-request" }, "https://spaces.community");
+    async function receive(event: MessageEvent) {
+      if (event.origin !== "https://spaces.community" || event.data?.type !== "spaces-auth-response") return;
+      if (event.data.status === "signed_out") return window.location.replace("https://spaces.community/login?redirect=%2Fsuperadmin%3Freturn_to%3Dhttps%253A%252F%252Fsuperadminko.spaces.community%252F");
+      if (event.data.status === "mfa_required") return window.location.replace("https://spaces.community/superadmin?return_to=https%3A%2F%2Fsuperadminko.spaces.community%2F");
+      if (event.data.status !== "ready" || !supabase) return;
+      const { error } = await supabase.auth.setSession({ access_token: event.data.accessToken, refresh_token: event.data.refreshToken });
+      if (error) setMessage(error.message);
+    }
+    window.addEventListener("message", receive);
+    const timer = window.setInterval(request, 750);
+    return () => { window.removeEventListener("message", receive); window.clearInterval(timer); };
+  }, []);
+
+  return <><StatePage loading title="Открываем Superadminko" text={message} /><iframe ref={frame} className="authBridgeFrame" title="Spaces session bridge" src="https://spaces.community/auth-bridge" onLoad={() => frame.current?.contentWindow?.postMessage({ type: "spaces-auth-request" }, "https://spaces.community")} /></>;
 }
 
 function AppContent({
@@ -173,16 +217,22 @@ function AppContent({
 
 function MfaBoundary({ session, children }: { session: Session; children: React.ReactNode }) {
   const [verified, setVerified] = React.useState<boolean | null>(null);
+  const finish = React.useCallback(() => {
+    const returnTo = new URLSearchParams(window.location.search).get("return_to");
+    if (returnTo === "https://superadminko.spaces.community/") window.location.replace(returnTo);
+    else setVerified(true);
+  }, []);
 
   React.useEffect(() => {
     if (!supabase) return;
     supabase.auth.mfa.getAuthenticatorAssuranceLevel().then(({ data, error }) => {
-      setVerified(!error && data.currentLevel === "aal2");
+      if (!error && data.currentLevel === "aal2") finish();
+      else setVerified(false);
     });
-  }, [session.access_token]);
+  }, [finish, session.access_token]);
 
   if (verified === null) return <StatePage loading title="Проверяем защиту аккаунта" text="Подтверждаем второй фактор." />;
-  if (!verified) return <MfaSetup onVerified={() => setVerified(true)} />;
+  if (!verified) return <MfaSetup onVerified={finish} />;
   return <>{children}</>;
 }
 
@@ -534,7 +584,7 @@ function SuperadminPage({ session, workspace }: { session: Session | null; works
       {tab === "services" && <ServicesAdmin data={data} confirm={(text, action) => setConfirmation({ text, action })} />}
       {tab === "harness" && <HarnessAdmin data={data} confirm={(text, action) => setConfirmation({ text, action })} />}
       {tab === "jobs" && <JobsAdmin data={data} confirm={(text, action) => setConfirmation({ text, action })} />}
-      {tab === "audit" && <AuditAdmin data={data} />}
+      {tab === "audit" && <AuditAdmin data={data} confirm={(text, action) => setConfirmation({ text, action })} />}
       {confirmation && <ConfirmDialog title="Ты уверен, босс?" text={confirmation.text} confirm="Подтвердить" working={working} onClose={() => setConfirmation(null)} onConfirm={() => void runConfirmed()} />}
     </section>
   );
@@ -555,17 +605,28 @@ function AccountsAdmin({ data, confirm }: { data: AdminData; confirm: (text: str
     const owner = data.profiles.find((profile) => profile.id === account.owner_id);
     const subscription = data.subscriptions.find((item) => item.account_id === account.id);
     const plan = data.plans.find((item) => item.id === subscription?.plan_id);
-    return <AccountAdminRow key={account.id} account={account} owner={owner} planCode={plan?.code ?? "trial"} subscriptionStatus={subscription?.status ?? "trialing"} seats={subscription?.seats ?? 1} plans={data.plans} confirm={confirm} />;
+    return <AccountAdminRow key={account.id} account={account} owner={owner} planCode={plan?.code ?? "trial"} subscriptionStatus={subscription?.status ?? "trialing"} seats={subscription?.seats ?? 1} plans={data.plans} limits={data.limits} overrides={data.accountLimitOverrides.filter((item) => item.account_id === account.id)} confirm={confirm} />;
   })}</div>;
 }
 
-function AccountAdminRow({ account, owner, planCode, subscriptionStatus, seats, plans, confirm }: { account: AdminData["accounts"][number]; owner?: AdminData["profiles"][number]; planCode: string; subscriptionStatus: string; seats: number; plans: AdminData["plans"]; confirm: (text: string, action: () => Promise<void>) => void }) {
+function AccountAdminRow({ account, owner, planCode, subscriptionStatus, seats, plans, limits, overrides, confirm }: { account: AdminData["accounts"][number]; owner?: AdminData["profiles"][number]; planCode: string; subscriptionStatus: string; seats: number; plans: AdminData["plans"]; limits: AdminData["limits"]; overrides: AdminData["accountLimitOverrides"]; confirm: (text: string, action: () => Promise<void>) => void }) {
   const [selectedPlan, setSelectedPlan] = React.useState(planCode);
   const [selectedStatus, setSelectedStatus] = React.useState(subscriptionStatus);
   const [seatCount, setSeatCount] = React.useState(seats);
   const saveText = "Изменить тариф аккаунта «" + account.name + "» на " + selectedPlan + ", статус " + selectedStatus + ", мест: " + seatCount + ".";
   const statusText = (account.status === "active" ? "Приостановить" : "Активировать") + " аккаунт «" + account.name + "».";
-  return <article className="adminRow"><div><strong>{account.name}</strong><p>{owner?.email ?? account.slug}</p><div className="rowBadges"><span className="badge">{account.account_type}</span><span className={"status status-" + (account.status === "active" ? "ready" : "disabled")}>{account.status}</span></div></div><div className="adminControls"><select value={selectedPlan} onChange={(event) => setSelectedPlan(event.target.value)}>{plans.map((plan) => <option key={plan.id} value={plan.code}>{plan.name}</option>)}</select><select value={selectedStatus} onChange={(event) => setSelectedStatus(event.target.value)}><option value="trialing">trialing</option><option value="active">active</option><option value="past_due">past_due</option><option value="paused">paused</option></select><input type="number" min={1} value={seatCount} onChange={(event) => setSeatCount(Number(event.target.value))} aria-label="Места" /><button className="button buttonOutline" onClick={() => confirm(saveText, () => adminSetSubscription(account.id, selectedPlan, selectedStatus, seatCount))}>Сохранить тариф</button>{!owner?.is_superadmin && <button className="button buttonGhost" onClick={() => confirm(statusText, () => adminSetAccountStatus(account.id, account.status === "active" ? "suspended" : "active"))}>{account.status === "active" ? "Приостановить" : "Активировать"}</button>}</div></article>;
+  return <article className="adminRow"><div><strong>{account.name}</strong><p>{owner?.email ?? account.slug}</p><div className="rowBadges"><span className="badge">{account.account_type}</span><span className={"status status-" + (account.status === "active" ? "ready" : "disabled")}>{account.status}</span></div></div><div><div className="adminControls"><select value={selectedPlan} onChange={(event) => setSelectedPlan(event.target.value)}>{plans.map((plan) => <option key={plan.id} value={plan.code}>{plan.name}</option>)}</select><select value={selectedStatus} onChange={(event) => setSelectedStatus(event.target.value)}><option value="trialing">trialing</option><option value="active">active</option><option value="past_due">past_due</option><option value="paused">paused</option></select><input type="number" min={1} value={seatCount} onChange={(event) => setSeatCount(Number(event.target.value))} aria-label="Места" /><button className="button buttonOutline" onClick={() => confirm(saveText, () => adminSetSubscription(account.id, selectedPlan, selectedStatus, seatCount))}>Сохранить тариф</button>{!owner?.is_superadmin && <button className="button buttonGhost" onClick={() => confirm(statusText, () => adminSetAccountStatus(account.id, account.status === "active" ? "suspended" : "active"))}>{account.status === "active" ? "Приостановить" : "Активировать"}</button>}</div><AccountLimitEditor account={account} limits={limits} overrides={overrides} confirm={confirm} /></div></article>;
+}
+
+function AccountLimitEditor({ account, limits, overrides, confirm }: { account: AdminData["accounts"][number]; limits: AdminData["limits"]; overrides: AdminData["accountLimitOverrides"]; confirm: (text: string, action: () => Promise<void>) => void }) {
+  const available = Array.from(new Map(limits.map((limit) => [limit.key, limit])).values());
+  const [key, setKey] = React.useState(available[0]?.key ?? "");
+  const current = overrides.find((item) => item.key === key);
+  const [value, setValue] = React.useState(current?.value?.toString() ?? "");
+  const [reason, setReason] = React.useState(current?.reason ?? "");
+  React.useEffect(() => { setValue(current?.value?.toString() ?? ""); setReason(current?.reason ?? ""); }, [current?.key, current?.value, current?.reason]);
+  if (!available.length) return null;
+  return <details className="accountLimits"><summary>Индивидуальные лимиты{overrides.length ? ` (${overrides.length})` : ""}</summary><div className="overrideEditor"><select value={key} onChange={(event) => setKey(event.target.value)}>{available.map((limit) => <option key={limit.key} value={limit.key}>{limit.description || limit.key}</option>)}</select><input type="number" min={0} value={value} placeholder="По тарифу" onChange={(event) => setValue(event.target.value)} /><input value={reason} placeholder="Причина изменения" onChange={(event) => setReason(event.target.value)} /><button className="button buttonOutline" onClick={() => confirm(`Изменить лимит ${key} для «${account.name}» на ${value || "значение тарифа"}.`, () => adminSetAccountLimit(account.id, key, value === "" ? null : Number(value), reason))}>Сохранить</button></div></details>;
 }
 
 function PlansAdmin({ data, confirm }: { data: AdminData; confirm: (text: string, action: () => Promise<void>) => void }) {
@@ -580,12 +641,23 @@ function LimitAdminRow({ planCode, limit, confirm }: { planCode: string; limit: 
 }
 
 function ServicesAdmin({ data, confirm }: { data: AdminData; confirm: (text: string, action: () => Promise<void>) => void }) {
-  return <div className="dataList">{data.services.map((service) => <ServiceAdminRow key={service.id} service={service} confirm={confirm} />)}</div>;
+  const [creating, setCreating] = React.useState(false);
+  const empty: Service = { id: "", slug: "", name: "", subdomain: "", description: "", status: "planned", base_url: null, mcp_url: null, auth_mode: "spaces_ticket", is_core: false, capabilities: {}, sort_order: 100 };
+  return <div className="dataList"><div className="listToolbar"><button className="button buttonPrimary" onClick={() => setCreating(true)}><Plus size={15} />Добавить сервис</button></div>{creating && <ServiceAdminRow service={empty} confirm={confirm} onCancel={() => setCreating(false)} />}{data.services.map((service) => <ServiceAdminRow key={service.id} service={service} confirm={confirm} />)}</div>;
 }
 
-function ServiceAdminRow({ service, confirm }: { service: Service; confirm: (text: string, action: () => Promise<void>) => void }) {
+function ServiceAdminRow({ service, confirm, onCancel }: { service: Service; confirm: (text: string, action: () => Promise<void>) => void; onCancel?: () => void }) {
   const [draft, setDraft] = React.useState(service);
-  return <article className="adminRow serviceAdminRow"><div><strong>{service.name}</strong><p>{service.slug}</p>{service.is_core && <span className="badge dark">core</span>}</div><div className="serviceAdminFields"><input value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} aria-label="Название сервиса" /><input value={draft.base_url ?? ""} onChange={(event) => setDraft({ ...draft, base_url: event.target.value })} aria-label="URL сервиса" /><input value={draft.mcp_url ?? ""} onChange={(event) => setDraft({ ...draft, mcp_url: event.target.value || null })} aria-label="MCP URL" /><select value={draft.status} disabled={service.is_core} onChange={(event) => setDraft({ ...draft, status: event.target.value as Service["status"] })}><option value="active">active</option><option value="paused">paused</option><option value="planned">planned</option></select><button className="button buttonOutline" onClick={() => confirm("Сохранить системные настройки сервиса «" + draft.name + "».", () => adminSaveService(draft))}>Сохранить</button></div></article>;
+  const [capabilities, setCapabilities] = React.useState(JSON.stringify(service.capabilities ?? {}, null, 2));
+  const [error, setError] = React.useState("");
+  function save() {
+    try {
+      const parsed = JSON.parse(capabilities) as Record<string, unknown>;
+      setError("");
+      confirm("Сохранить системные настройки сервиса «" + draft.name + "».", async () => { await adminSaveService({ ...draft, capabilities: parsed }); onCancel?.(); });
+    } catch { setError("Capabilities должны быть корректным JSON."); }
+  }
+  return <article className="adminRow serviceAdminRow"><div><strong>{service.name || "Новый сервис"}</strong><p>{service.slug || "Заполните реестр"}</p>{service.is_core && <span className="badge dark">core</span>}</div><div><div className="serviceAdminFields"><input value={draft.slug} disabled={service.is_core} onChange={(event) => setDraft({ ...draft, slug: event.target.value })} placeholder="slug" aria-label="Slug сервиса" /><input value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} placeholder="Название" aria-label="Название сервиса" /><input value={draft.subdomain} disabled={service.is_core} onChange={(event) => setDraft({ ...draft, subdomain: event.target.value })} placeholder="service.spaces.community" aria-label="Субдомен" /><input value={draft.base_url ?? ""} onChange={(event) => setDraft({ ...draft, base_url: event.target.value || null })} placeholder="Base URL" aria-label="URL сервиса" /><input value={draft.mcp_url ?? ""} onChange={(event) => setDraft({ ...draft, mcp_url: event.target.value || null })} placeholder="MCP URL" aria-label="MCP URL" /><input value={draft.auth_mode} onChange={(event) => setDraft({ ...draft, auth_mode: event.target.value })} placeholder="Режим авторизации" aria-label="Режим авторизации" /><input type="number" value={draft.sort_order} onChange={(event) => setDraft({ ...draft, sort_order: Number(event.target.value) })} aria-label="Порядок" /><select value={draft.status} disabled={service.is_core} onChange={(event) => setDraft({ ...draft, status: event.target.value as Service["status"] })}><option value="active">active</option><option value="paused">paused</option><option value="planned">planned</option></select><textarea value={capabilities} onChange={(event) => setCapabilities(event.target.value)} aria-label="Capabilities JSON" /><button className="button buttonOutline" onClick={save}>Сохранить</button>{onCancel && <button className="button buttonGhost" onClick={onCancel}>Отмена</button>}</div>{error && <div className="notice errorNotice">{error}</div>}</div></article>;
 }
 
 function HarnessAdmin({ data, confirm }: { data: AdminData; confirm: (text: string, action: () => Promise<void>) => void }) {
@@ -608,8 +680,13 @@ function JobsAdmin({ data, confirm }: { data: AdminData; confirm: (text: string,
   return <div className="dataList">{data.jobs.length ? data.jobs.map((job) => <article className="adminRow" key={job.id}><div><strong>{job.operation}</strong><p>{job.project_service_id}</p><span className={"status status-" + (job.status === "completed" ? "ready" : job.status === "failed" ? "error" : "disabled")}>{job.status}</span>{job.last_error && <small className="fieldError">{job.last_error}</small>}</div>{job.status === "failed" && <button className="button buttonOutline" onClick={() => confirm("Повторно поставить операцию " + job.operation + " в очередь.", () => adminRetryJob(job.id))}>Повторить</button>}</article>) : <div className="emptyState">Очередь provisioning пуста.</div>}</div>;
 }
 
-function AuditAdmin({ data }: { data: AdminData }) {
-  return <div className="tableWrap"><table className="dataTable"><thead><tr><th>Время</th><th>Действие</th><th>Проект</th><th>Объект</th></tr></thead><tbody>{data.audit.map((event) => <tr key={event.id}><td>{new Date(event.created_at).toLocaleString("ru")}</td><td><code>{event.action}</code></td><td>{event.project_id ?? "—"}</td><td>{event.target_type ? event.target_type + ": " + event.target_id : "—"}</td></tr>)}</tbody></table></div>;
+function AuditAdmin({ data, confirm }: { data: AdminData; confirm: (text: string, action: () => Promise<void>) => void }) {
+  const now = new Date();
+  const weekAgo = new Date(now.getTime() - 7 * 86_400_000);
+  const localValue = (date: Date) => new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+  const [start, setStart] = React.useState(localValue(weekAgo));
+  const [end, setEnd] = React.useState(localValue(now));
+  return <div className="auditSection"><div className="auditToolbar"><label>С<input type="datetime-local" value={start} onChange={(event) => setStart(event.target.value)} /></label><label>По<input type="datetime-local" value={end} onChange={(event) => setEnd(event.target.value)} /></label><button className="button buttonDanger" disabled={!start || !end || start >= end} onClick={() => confirm(`Безвозвратно удалить события аудита с ${new Date(start).toLocaleString("ru")} по ${new Date(end).toLocaleString("ru")}. Контрольный хеш останется в истории удаления.`, () => adminDeleteAuditPeriod(new Date(start).toISOString(), new Date(end).toISOString()))}>Удалить период</button></div><div className="tableWrap"><table className="dataTable"><thead><tr><th>Время</th><th>Действие</th><th>Проект</th><th>Объект</th></tr></thead><tbody>{data.audit.map((event) => <tr key={event.id}><td>{new Date(event.created_at).toLocaleString("ru")}</td><td><code>{event.action}</code></td><td>{event.project_id ?? "—"}</td><td>{event.target_type ? event.target_type + ": " + event.target_id : "—"}</td></tr>)}</tbody></table></div>{data.auditMeta.length > 0 && <div className="auditMeta"><h2>История удаления</h2>{data.auditMeta.map((event) => <p key={event.id}>{new Date(event.created_at).toLocaleString("ru")}: удалено {event.deleted_count}, контрольный хеш <code>{event.digest.slice(0, 12)}…</code></p>)}</div>}</div>;
 }
 
 function ProjectDashboard({ session, workspace, refresh }: { session: Session; workspace: Workspace; refresh: () => Promise<void> }) {

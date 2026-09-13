@@ -46,11 +46,14 @@ export type Service = {
   id: string;
   slug: string;
   name: string;
+  subdomain: string;
   description: string | null;
   status: "planned" | "active" | "paused";
   base_url: string | null;
   mcp_url: string | null;
+  auth_mode: string;
   is_core: boolean;
+  capabilities: Record<string, unknown>;
   sort_order: number;
 };
 
@@ -131,6 +134,14 @@ export type Subscription = {
   trial_ends_at: string | null;
 };
 
+export type AccountLimitOverride = {
+  account_id: string;
+  key: string;
+  value: number | null;
+  reason: string | null;
+  updated_at: string;
+};
+
 export type ProvisioningJob = {
   id: string;
   project_service_id: string;
@@ -154,6 +165,16 @@ export type AuditEvent = {
   created_at: string;
 };
 
+export type AuditMetaEvent = {
+  id: number;
+  action: string;
+  period_start: string | null;
+  period_end: string | null;
+  deleted_count: number;
+  digest: string;
+  created_at: string;
+};
+
 export type AdminData = {
   profiles: Profile[];
   accounts: Account[];
@@ -162,8 +183,10 @@ export type AdminData = {
   plans: Plan[];
   limits: PlanLimit[];
   subscriptions: Subscription[];
+  accountLimitOverrides: AccountLimitOverride[];
   jobs: ProvisioningJob[];
   audit: AuditEvent[];
+  auditMeta: AuditMetaEvent[];
   harnessVersions: HarnessVersion[];
 };
 
@@ -330,8 +353,10 @@ export async function loadAdminData(): Promise<AdminData> {
     client.from("plans").select("*").order("price_cents"),
     client.from("plan_limits").select("*").order("key"),
     client.from("account_subscriptions").select("*"),
+    client.from("account_limit_overrides").select("*").order("key"),
     client.from("provisioning_jobs").select("*").order("created_at", { ascending: false }).limit(100),
     client.from("audit_events").select("*").order("created_at", { ascending: false }).limit(200),
+    client.from("audit_meta_events").select("*").order("created_at", { ascending: false }).limit(100),
     client.from("harness_versions").select("*").order("version", { ascending: false }),
   ]);
   const failed = results.find((result) => result.error);
@@ -344,9 +369,11 @@ export async function loadAdminData(): Promise<AdminData> {
     plans: (results[4].data ?? []) as Plan[],
     limits: (results[5].data ?? []) as PlanLimit[],
     subscriptions: (results[6].data ?? []) as Subscription[],
-    jobs: (results[7].data ?? []) as ProvisioningJob[],
-    audit: (results[8].data ?? []) as AuditEvent[],
-    harnessVersions: (results[9].data ?? []) as HarnessVersion[],
+    accountLimitOverrides: (results[7].data ?? []) as AccountLimitOverride[],
+    jobs: (results[8].data ?? []) as ProvisioningJob[],
+    audit: (results[9].data ?? []) as AuditEvent[],
+    auditMeta: (results[10].data ?? []) as AuditMetaEvent[],
+    harnessVersions: (results[11].data ?? []) as HarnessVersion[],
   };
 }
 
@@ -367,6 +394,16 @@ export async function adminSetAccountStatus(accountId: string, status: Account["
   if (error) throw error;
 }
 
+export async function adminSetAccountLimit(accountId: string, key: string, value: number | null, reason: string) {
+  const { error } = await requireClient().rpc("admin_set_account_limit", {
+    p_account_id: accountId,
+    p_key: key,
+    p_value: value,
+    p_reason: reason || null,
+  });
+  if (error) throw error;
+}
+
 export async function adminSetSubscription(accountId: string, planCode: string, status: string, seats: number) {
   const { error } = await requireClient().rpc("admin_set_subscription", {
     p_account_id: accountId,
@@ -378,19 +415,26 @@ export async function adminSetSubscription(accountId: string, planCode: string, 
 }
 
 export async function adminSaveService(service: Service) {
-  const url = service.base_url ? new URL(service.base_url) : null;
   const { error } = await requireClient().rpc("admin_save_service", {
     p_service_id: service.id || null,
     p_slug: service.slug,
     p_name: service.name,
-    p_subdomain: url?.hostname ?? service.slug,
+    p_subdomain: service.subdomain,
     p_description: service.description,
     p_status: service.status,
     p_base_url: service.base_url,
     p_mcp_url: service.mcp_url,
-    p_auth_mode: "spaces_ticket",
-    p_capabilities: {},
+    p_auth_mode: service.auth_mode,
+    p_capabilities: service.capabilities,
     p_sort_order: service.sort_order,
+  });
+  if (error) throw error;
+}
+
+export async function adminDeleteAuditPeriod(periodStart: string, periodEnd: string) {
+  const { error } = await requireClient().rpc("admin_delete_audit_period", {
+    p_period_start: periodStart,
+    p_period_end: periodEnd,
   });
   if (error) throw error;
 }
