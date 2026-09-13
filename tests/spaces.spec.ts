@@ -52,3 +52,17 @@ test("service launch requires the Spaces session and preserves its destination",
   const redirect = new URL(page.url()).searchParams.get("redirect");
   expect(redirect).toBe("/launch?project=project-id&service=outline");
 });
+
+test("project invitation asks an unauthenticated recipient to use Spaces", async ({ page }) => {
+  await page.goto("/invite?invitation=00000000-0000-4000-8000-000000000001");
+
+  await expect(page.getByRole("heading", { name: "Войдите в Spaces" })).toBeVisible();
+  const invitationPage = page.locator(".statePage");
+  await expect(invitationPage.getByRole("link", { name: "Войти" })).toHaveAttribute("href", /\/login\?redirect=/);
+  await expect(invitationPage.getByRole("link", { name: "Создать аккаунт" })).toHaveAttribute("href", /\/register\?redirect=/);
+});
+
+test("invalid project invitation link is rejected", async ({ page }) => {
+  await page.goto("/invite");
+  await expect(page.getByRole("heading", { name: "Приглашение недоступно" })).toBeVisible();
+});

@@ -155,10 +155,13 @@ site_url = "https://spaces.community"
 # A list of *exact* URLs that auth providers are permitted to redirect to post authentication.
 additional_redirect_urls = [
   "https://spaces.community/account",
+  "https://spaces.community/invite*",
   "https://spaces.community/reset-password",
   "http://localhost:5173/account",
+  "http://localhost:5173/invite*",
   "http://localhost:5173/reset-password",
   "http://127.0.0.1:5173/account",
+  "http://127.0.0.1:5173/invite*",
   "http://127.0.0.1:5173/reset-password"
 ]
 # How long tokens are valid for, in seconds. Defaults to 3600 (1 hour), maximum 604,800 (1 week).
@@ -242,19 +245,23 @@ sender_name = "Spaces"
 
 [auth.email.template.confirmation]
 subject = "Подтвердите аккаунт Spaces"
-content_path = "./templates/confirmation.html"
+content_path = "./supabase/templates/confirmation.html"
+
+[auth.email.template.invite]
+subject = "Вас пригласили в проект Spaces"
+content_path = "./supabase/templates/invite.html"
 
 [auth.email.template.recovery]
 subject = "Восстановление доступа Spaces"
-content_path = "./templates/recovery.html"
+content_path = "./supabase/templates/recovery.html"
 
 [auth.email.template.magic_link]
 subject = "Вход в Spaces"
-content_path = "./templates/magic_link.html"
+content_path = "./supabase/templates/magic_link.html"
 
 [auth.email.template.email_change]
 subject = "Подтверждение нового email Spaces"
-content_path = "./templates/email_change.html"
+content_path = "./supabase/templates/email_change.html"
 
 [auth.email.notification.password_changed]
 enabled = true
@@ -307,8 +314,8 @@ max_enrolled_factors = 10
 
 # Control MFA via App Authenticator (TOTP)
 [auth.mfa.totp]
-enroll_enabled = false
-verify_enabled = false
+enroll_enabled = true
+verify_enabled = true
 
 # Configure MFA via Phone Messaging
 [auth.mfa.phone]

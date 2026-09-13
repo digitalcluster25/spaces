@@ -33,6 +33,7 @@ import {
 } from "lucide-react";
 import {
   acceptHarnessVersion,
+  acceptProjectInvitation,
   adminPublishHarness,
   adminDeleteAuditPeriod,
   adminRetryJob,
@@ -46,11 +47,15 @@ import {
   createProject,
   createMcpCredential,
   createServiceTicket,
+  createProjectInvitation,
   loadWorkspace,
   loadAdminData,
   restoreProject,
+  removeProjectMember,
   revokeMcpCredential,
+  revokeProjectInvitation,
   saveHarnessUserConfig,
+  setActiveAccountForTab,
   setActiveProjectForTab,
   setServiceEnabled,
   supabase,
@@ -200,6 +205,8 @@ function AppContent({
         <SuperadminPage session={session} workspace={workspaceState.workspace} />
       ) : path === "/launch" ? (
         <ServiceLaunchPage session={session} authLoading={authLoading} {...workspaceState} />
+      ) : path === "/invite" ? (
+        <InvitationPage session={session} authLoading={authLoading} />
       ) : path === "/account" ? (
         <AccountPage session={session} {...workspaceState} />
       ) : path === "/reset-password" ? (
@@ -363,16 +370,18 @@ function TenantBar({ session, workspace, onRefresh }: { session: Session; worksp
     await onRefresh();
   }
 
+  async function changeAccount(accountId: string) {
+    setActiveAccountForTab(session.user.id, accountId);
+    await onRefresh();
+  }
+
   const name = workspace.profile.display_name || workspace.profile.email || "Пользователь";
   return (
     <header className={`tenantBar${expanded ? " expanded" : ""}`}>
       <div className="tenantMain">
         <Brand />
         <span className="tenantDivider" />
-        <div className="tenantIdentity">
-          <span className="tenantLabel">Аккаунт</span>
-          <strong>{workspace.account.name}</strong>
-        </div>
+        <label className="accountSelectLabel"><span>Аккаунт</span><select value={workspace.account.id} onChange={(event) => void changeAccount(event.target.value)} aria-label="Активный аккаунт">{workspace.accounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select><ChevronDown size={14} /></label>
         <label className="projectSelectLabel">
           <span>Проект</span>
           <select
@@ -511,6 +520,34 @@ function AccountPage({
   if (!session) return <StatePage title="Нужно войти" text="После входа откроются проекты и сервисы." action={<a className="button buttonPrimary" href="/login">Войти</a>} />;
   if (error || !workspace) return <StatePage title="Не удалось загрузить аккаунт" text={error || "Повторите попытку."} action={<button className="button buttonOutline" onClick={() => void refresh()}>Повторить</button>} />;
   return <ProjectDashboard session={session} workspace={workspace} refresh={refresh} />;
+}
+
+function InvitationPage({ session, authLoading }: { session: Session | null; authLoading: boolean }) {
+  const [message, setMessage] = React.useState("");
+  const started = React.useRef(false);
+  const invitationId = new URLSearchParams(window.location.search).get("invitation") || "";
+  const redirect = `/invite?invitation=${encodeURIComponent(invitationId)}`;
+
+  React.useEffect(() => {
+    if (authLoading || !session || !invitationId || started.current) return;
+    started.current = true;
+    void acceptProjectInvitation(invitationId)
+      .then((result) => {
+        setActiveAccountForTab(session.user.id, result.account_id);
+        setActiveProjectForTab(result.account_id, result.project_id);
+        window.location.replace("/account");
+      })
+      .catch((cause) => {
+        started.current = false;
+        setMessage(cause instanceof Error ? cause.message : "Не удалось принять приглашение");
+      });
+  }, [authLoading, invitationId, session]);
+
+  if (!invitationId) return <StatePage title="Приглашение недоступно" text="В ссылке отсутствует идентификатор приглашения." action={<a className="button buttonOutline" href="/account">К проектам</a>} />;
+  if (authLoading) return <StatePage loading title="Проверяем приглашение" text="Загружаем единую учётную запись Spaces." />;
+  if (!session) return <StatePage title="Войдите в Spaces" text="Используйте тот email, на который отправлено приглашение." action={<div className="inlineActions"><a className="button buttonPrimary" href={`/login?redirect=${encodeURIComponent(redirect)}`}>Войти</a><a className="button buttonOutline" href={`/register?redirect=${encodeURIComponent(redirect)}`}>Создать аккаунт</a></div>} />;
+  if (message) return <StatePage title="Не удалось принять приглашение" text={message} action={<a className="button buttonOutline" href="/account">К проектам</a>} />;
+  return <StatePage loading title="Добавляем в проект" text="Проверяем email и права доступа." />;
 }
 
 function StatePage({ title, text, action, loading }: { title: string; text: string; action?: React.ReactNode; loading?: boolean }) {
@@ -717,6 +754,7 @@ function ProjectDashboard({ session, workspace, refresh }: { session: Session; w
     ?? workspace.projects.find((project) => project.status === "active")
     ?? null;
   const visibleProjects = workspace.projects.filter((project) => project.status === tab);
+  const canManageAccount = workspace.accountRole === "owner";
 
   React.useEffect(() => {
     const requestedProjectId = new URLSearchParams(window.location.search).get("project");
@@ -763,8 +801,10 @@ function ProjectDashboard({ session, workspace, refresh }: { session: Session; w
     <section className="dashboardShell">
       <div className="pageHeader">
         <div><span className="sectionKicker"><Fingerprint size={14} />account hub</span><h1>Проекты</h1><p>Каждый проект изолирует данные, сервисы, Harness и доступы агентов.</p></div>
-        <button className="button buttonPrimary" type="button" onClick={() => setDialog({ mode: "create" })}><Plus size={16} />Создать проект</button>
+        {canManageAccount && <button className="button buttonPrimary" type="button" onClick={() => setDialog({ mode: "create" })}><Plus size={16} />Создать проект</button>}
       </div>
+
+      <IncomingInvitations session={session} workspace={workspace} refresh={refresh} />
 
       <div className="tabs" role="tablist" aria-label="Состояние проектов">
         <button className={tab === "active" ? "active" : ""} onClick={() => setTab("active")}>Активные</button>
@@ -781,14 +821,14 @@ function ProjectDashboard({ session, workspace, refresh }: { session: Session; w
             </button>
             <div className="projectMeta"><code>{project.slug}</code>{project.is_system && <span className="badge">Системный</span>}{project.id === activeProject?.id && <span className="badge dark">Активный</span>}</div>
             <div className="projectActions">
-              {project.status === "active" ? (
+              {project.status === "active" && canManageAccount ? (
                 <>
                   <button className="iconButton" title="Изменить" disabled={project.is_system} onClick={() => setDialog({ mode: "edit", project })}><Pencil size={16} /></button>
                   <button className="iconButton" title="Архивировать" disabled={project.is_system} onClick={() => setConfirmProject(project)}><Archive size={16} /></button>
                 </>
-              ) : (
+              ) : project.status === "archived" && canManageAccount ? (
                 <button className="button buttonOutline" disabled={working} onClick={() => void restore(project)}><RotateCcw size={15} />Восстановить</button>
-              )}
+              ) : null}
             </div>
           </article>
         ))}
@@ -796,7 +836,7 @@ function ProjectDashboard({ session, workspace, refresh }: { session: Session; w
       </div>
 
       {activeProject?.status === "active" && <ProjectWorkspace session={session} project={activeProject} workspace={workspace} refresh={refresh} />}
-      {dialog && <ProjectDialog state={dialog} services={workspace.services} onClose={() => setDialog(null)} onSaved={async () => { setDialog(null); await refresh(); }} />}
+      {dialog && <ProjectDialog accountId={workspace.account.id} state={dialog} services={workspace.services} onClose={() => setDialog(null)} onSaved={async () => { setDialog(null); await refresh(); }} />}
       {confirmProject && (
         <ConfirmDialog
           title="Ты уверен, босс?"
@@ -811,12 +851,36 @@ function ProjectDashboard({ session, workspace, refresh }: { session: Session; w
   );
 }
 
+function IncomingInvitations({ session, workspace, refresh }: { session: Session; workspace: Workspace; refresh: () => Promise<void> }) {
+  const [working, setWorking] = React.useState<string | null>(null);
+  const [message, setMessage] = React.useState("");
+  if (!workspace.incomingInvitations.length) return null;
+
+  async function accept(invitationId: string) {
+    setWorking(invitationId);
+    setMessage("");
+    try {
+      const result = await acceptProjectInvitation(invitationId);
+      setActiveAccountForTab(session.user.id, result.account_id);
+      setActiveProjectForTab(result.account_id, result.project_id);
+      await refresh();
+    } catch (cause) {
+      setMessage(cause instanceof Error ? cause.message : "Не удалось принять приглашение");
+    } finally {
+      setWorking(null);
+    }
+  }
+
+  return <section className="invitationInbox"><div><span className="sectionKicker"><Mail size={14} />приглашения</span><h2>Вас пригласили в проект</h2></div>{workspace.incomingInvitations.map((invitation) => <div className="incomingInvitation" key={invitation.invitation_id}><div><strong>{invitation.project_name}</strong><small>{invitation.account_name}{invitation.invited_by_name ? ` · ${invitation.invited_by_name}` : ""}</small></div><button className="button buttonPrimary" disabled={working === invitation.invitation_id} onClick={() => void accept(invitation.invitation_id)}>{working === invitation.invitation_id ? "Добавляем..." : "Принять"}</button></div>)}{message && <div className="notice errorNotice">{message}</div>}</section>;
+}
+
 function ProjectLogo({ project }: { project: Project }) {
   return <span className="projectLogo">{project.logo_url ? <img src={project.logo_url} alt="" /> : project.name.slice(0, 1).toUpperCase()}</span>;
 }
 
 function ProjectWorkspace({ session, project, workspace, refresh }: { session: Session; project: Project; workspace: Workspace; refresh: () => Promise<void> }) {
   const connections = workspace.projectServices.filter((item) => item.project_id === project.id);
+  const canManage = workspace.projectAccess?.role === "owner";
   const [message, setMessage] = React.useState("");
 
   async function toggle(service: Service, enabled: boolean) {
@@ -841,21 +905,80 @@ function ProjectWorkspace({ session, project, workspace, refresh }: { session: S
             <article className="serviceRow" key={service.id}>
               <div><div className="serviceName"><strong>{service.name}</strong><span className={`status status-${connection?.status ?? "disabled"}`}>{statusLabel(connection?.status)}</span></div><p>{service.description}</p>{connection?.last_error && <small className="fieldError">{connection.last_error}</small>}</div>
               <div className="serviceActions">
-                <label className="switch"><input type="checkbox" checked={Boolean(enabled)} onChange={(event) => void toggle(service, event.target.checked)} /><span /></label>
+                <label className="switch" title={canManage ? "Включить или выключить сервис" : "Сервисами управляет владелец проекта"}><input type="checkbox" checked={Boolean(enabled)} disabled={!canManage} onChange={(event) => void toggle(service, event.target.checked)} /><span /></label>
                 {connection?.status === "ready" ? <a className="button buttonOutline" href={serviceLaunchHref(project.id, service.slug)} target="_blank" rel="noopener noreferrer">Открыть<ExternalLink size={15} /></a> : <button className="button buttonOutline" type="button" disabled>Открыть<ExternalLink size={15} /></button>}
-                {service.mcp_url && connection?.status === "ready" && <a className="button buttonGhost" href="#mcp-access">MCP<KeyRound size={14} /></a>}
+                {canManage && service.mcp_url && connection?.status === "ready" && <a className="button buttonGhost" href="#mcp-access">MCP<KeyRound size={14} /></a>}
               </div>
             </article>
           );
         })}
       </div>
-      <McpPanel project={project} workspace={workspace} refresh={refresh} />
-      <HarnessPanel project={project} workspace={workspace} refresh={refresh} />
+      <MembersPanel project={project} workspace={workspace} refresh={refresh} />
+      <McpPanel project={project} workspace={workspace} refresh={refresh} canManage={canManage} />
+      <HarnessPanel project={project} workspace={workspace} refresh={refresh} canManage={canManage} />
     </div>
   );
 }
 
-function McpPanel({ project, workspace, refresh }: { project: Project; workspace: Workspace; refresh: () => Promise<void> }) {
+function MembersPanel({ project, workspace, refresh }: { project: Project; workspace: Workspace; refresh: () => Promise<void> }) {
+  const access = workspace.projectAccess;
+  const canManage = access?.role === "owner";
+  const [email, setEmail] = React.useState("");
+  const [working, setWorking] = React.useState(false);
+  const [message, setMessage] = React.useState("");
+  const [confirmation, setConfirmation] = React.useState<{ kind: "member" | "invitation"; id: string; label: string } | null>(null);
+
+  async function invite(event: React.FormEvent) {
+    event.preventDefault();
+    setWorking(true);
+    setMessage("");
+    try {
+      await createProjectInvitation(project.id, email);
+      setEmail("");
+      await refresh();
+      setMessage("Приглашение поставлено в очередь на отправку.");
+    } catch (cause) {
+      setMessage(cause instanceof Error ? cause.message : "Не удалось отправить приглашение");
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  async function confirmRemoval() {
+    if (!confirmation) return;
+    setWorking(true);
+    setMessage("");
+    try {
+      if (confirmation.kind === "member") await removeProjectMember(project.id, confirmation.id);
+      else await revokeProjectInvitation(confirmation.id);
+      setConfirmation(null);
+      await refresh();
+    } catch (cause) {
+      setMessage(cause instanceof Error ? cause.message : "Не удалось изменить доступ");
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  if (!access) return null;
+  return (
+    <section className="membersPanel">
+      <div className="sectionHeader"><div><span className="sectionKicker"><Users size={14} />project access</span><h2>Участники проекта</h2><p>Одна учётная запись Spaces открывает участнику этот проект во всех подключённых сервисах.</p></div><span className="badge">{access.members.length} участников</span></div>
+      {canManage && <form className="inviteForm" onSubmit={invite}><label>Email участника<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="name@example.com" required /></label><button className="button buttonPrimary" disabled={working || !email.trim()}>{working ? "Отправляем..." : "Пригласить"}</button></form>}
+      {message && <div className={message.startsWith("Не удалось") ? "notice errorNotice" : "notice"}>{message}</div>}
+      <div className="memberList">
+        {access.members.map((member) => {
+          const name = member.display_name || member.email || "Участник";
+          return <div className="memberRow" key={member.user_id}><Avatar name={name} url={member.avatar_url} /><div><strong>{name}</strong><small>{member.email}</small></div><span className="badge">{member.role === "owner" ? "Владелец" : "Участник"}</span>{canManage && member.role !== "owner" && <button className="iconButton" type="button" title="Удалить из проекта" onClick={() => setConfirmation({ kind: "member", id: member.user_id, label: name })}><Trash2 size={15} /></button>}</div>;
+        })}
+        {canManage && access.invitations.map((invitation) => <div className="memberRow pendingMember" key={invitation.id}><span className="pendingAvatar"><Mail size={15} /></span><div><strong>{invitation.email}</strong><small>{invitation.delivery_status === "sent" ? "Письмо отправлено" : invitation.delivery_status === "failed" ? "Ошибка отправки, повторим автоматически" : "Готовим письмо"} · до {new Date(invitation.expires_at).toLocaleDateString("ru")}</small></div><span className="badge">Ожидает</span><button className="iconButton" type="button" title="Отозвать приглашение" onClick={() => setConfirmation({ kind: "invitation", id: invitation.id, label: invitation.email })}><X size={15} /></button></div>)}
+      </div>
+      {confirmation && <ConfirmDialog title="Изменить доступ?" text={confirmation.kind === "member" ? `Удалить ${confirmation.label} из проекта «${project.name}»? Данные проекта сохранятся.` : `Отозвать приглашение для ${confirmation.label}?`} confirm={confirmation.kind === "member" ? "Удалить участника" : "Отозвать"} working={working} onClose={() => setConfirmation(null)} onConfirm={() => void confirmRemoval()} />}
+    </section>
+  );
+}
+
+function McpPanel({ project, workspace, refresh, canManage }: { project: Project; workspace: Workspace; refresh: () => Promise<void>; canManage: boolean }) {
   const credentials = workspace.mcpCredentials.filter((credential) => credential.project_id === project.id);
   const [name, setName] = React.useState("");
   const [lifetime, setLifetime] = React.useState("90");
@@ -901,6 +1024,8 @@ function McpPanel({ project, workspace, refresh }: { project: Project; workspace
     setMessage("Скопировано.");
   }
 
+  if (!canManage) return <section className="mcpPanel" id="mcp-access"><div className="sectionHeader"><div><span className="sectionKicker"><KeyRound size={14} />agent access</span><h2>MCP-доступ проекта</h2><p>Ключами внешних агентов управляет владелец проекта.</p></div></div></section>;
+
   return (
     <section className="mcpPanel" id="mcp-access">
       <div className="sectionHeader">
@@ -931,7 +1056,7 @@ function statusLabel(status?: string) {
   return ({ ready: "Готов", provisioning: "Создаётся", error: "Ошибка", disabled: "Выключен", suspended: "Приостановлен", archived: "В архиве" } as Record<string, string>)[status ?? "disabled"];
 }
 
-function HarnessPanel({ project, workspace, refresh }: { project: Project; workspace: Workspace; refresh: () => Promise<void> }) {
+function HarnessPanel({ project, workspace, refresh, canManage }: { project: Project; workspace: Workspace; refresh: () => Promise<void>; canManage: boolean }) {
   const initial = workspace.harness?.user_config ?? {};
   const [config, setConfig] = React.useState<Record<string, unknown>>(initial);
   const [saving, setSaving] = React.useState(false);
@@ -979,19 +1104,19 @@ function HarnessPanel({ project, workspace, refresh }: { project: Project; works
   return (
     <section className="harnessPanel">
       <div className="sectionHeader"><div><span className="sectionKicker"><Settings2 size={14} />harness</span><h2>Настройки среды</h2><p>Административный слой задаёт обязательные правила. Пользовательский слой дополняет их и не может ослабить безопасность.</p></div><span className="badge dark">v{workspace.harnessVersion?.version ?? "—"}</span></div>
-      {workspace.harness?.offered_version_id && <div className="notice updateNotice"><span>Доступна новая версия административного шаблона. Она будет применена только после подтверждения.</span><button className="button buttonOutline" onClick={() => void acceptUpdate()}>Применить</button></div>}
+      {canManage && workspace.harness?.offered_version_id && <div className="notice updateNotice"><span>Доступна новая версия административного шаблона. Она будет применена только после подтверждения.</span><button className="button buttonOutline" onClick={() => void acceptUpdate()}>Применить</button></div>}
       <div className="harnessGrid">
-        {fields.map(([key, label, placeholder]) => <label key={key}>{label}<textarea value={String(config[key] ?? "")} onChange={(event) => setConfig((current) => ({ ...current, [key]: event.target.value }))} placeholder={placeholder} /></label>)}
+        {fields.map(([key, label, placeholder]) => <label key={key}>{label}<textarea value={String(config[key] ?? "")} readOnly={!canManage} onChange={(event) => setConfig((current) => ({ ...current, [key]: event.target.value }))} placeholder={placeholder} /></label>)}
       </div>
       <div className="notice"><ShieldCheck size={16} />Обязательные правила безопасности, изоляции проекта и проверки результата применяются без изменений.</div>
       {workspace.harness?.conflict_report?.map((conflict, index) => <div className="notice errorNotice" key={index}>{conflict.field}: {conflict.reason}</div>)}
       {message && <div className="notice">{message}</div>}
-      <div className="harnessActions"><button className="button buttonPrimary" disabled={saving} onClick={() => void save()}>{saving ? "Сохраняем..." : "Сохранить настройки"}</button></div>
+      {canManage ? <div className="harnessActions"><button className="button buttonPrimary" disabled={saving} onClick={() => void save()}>{saving ? "Сохраняем..." : "Сохранить настройки"}</button></div> : <div className="notice">Пользовательский слой этого проекта изменяет владелец.</div>}
     </section>
   );
 }
 
-function ProjectDialog({ state, services, onClose, onSaved }: { state: { mode: "create" | "edit"; project?: Project }; services: Service[]; onClose: () => void; onSaved: () => Promise<void> }) {
+function ProjectDialog({ accountId, state, services, onClose, onSaved }: { accountId: string; state: { mode: "create" | "edit"; project?: Project }; services: Service[]; onClose: () => void; onSaved: () => Promise<void> }) {
   const project = state.project;
   const [name, setName] = React.useState(project?.name ?? "");
   const [description, setDescription] = React.useState(project?.description ?? "");
@@ -1005,7 +1130,7 @@ function ProjectDialog({ state, services, onClose, onSaved }: { state: { mode: "
     setSaving(true);
     setError("");
     try {
-      if (state.mode === "create") await createProject({ name, description, logoUrl, services: selectedServices });
+      if (state.mode === "create") await createProject(accountId, { name, description, logoUrl, services: selectedServices });
       else if (project) await updateProject(project.id, { name, description, logoUrl });
       await onSaved();
     } catch (cause) {
@@ -1057,7 +1182,7 @@ function AuthPage({ mode }: { mode: AuthMode }) {
     const result = isLogin
       ? await supabase.auth.signInWithPassword({ email, password })
       : isRegister
-        ? await supabase.auth.signUp({ email, password, options: { data: { name }, emailRedirectTo: `${window.location.origin}/account` } })
+        ? await supabase.auth.signUp({ email, password, options: { data: { name }, emailRedirectTo: `${window.location.origin}${redirect}` } })
         : await supabase.auth.resetPasswordForEmail(email, { redirectTo: `${window.location.origin}/reset-password` });
     setLoading(false);
     if (result.error) return setMessage(result.error.message);

@@ -47,10 +47,10 @@ code { padding: 3px 6px; border: 1px solid var(--border); border-radius: 4px; ba
   backdrop-filter: blur(12px);
 }
 .topbar { justify-content: space-between; gap: 20px; }
-.brand, .topActions, .heroActions, .serviceActions, .projectActions, .dialogActions, .sectionHeader, .serviceName { display: flex; align-items: center; }
+.brand, .topActions, .heroActions, .serviceActions, .projectActions, .dialogActions, .sectionHeader, .serviceName, .inlineActions { display: flex; align-items: center; }
 .brand { gap: 9px; flex: 0 0 auto; font-size: .9375rem; font-weight: 700; }
 .brandMark, .assistantIcon { display: grid; place-items: center; width: 34px; height: 34px; color: var(--primary-foreground); background: var(--primary); border-radius: var(--radius); }
-.topActions, .heroActions, .serviceActions, .projectActions { gap: 8px; }
+.topActions, .heroActions, .serviceActions, .projectActions, .inlineActions { gap: 8px; }
 .headerPlaceholder { display: block; width: 114px; height: 38px; }
 
 .button, .iconButton {
@@ -87,12 +87,11 @@ code { padding: 3px 6px; border: 1px solid var(--border); border-radius: 4px; ba
 .tenantBar { gap: 16px; min-height: 64px; }
 .tenantMain { display: flex; align-items: center; gap: 14px; min-width: 0; }
 .tenantDivider { width: 1px; height: 28px; background: var(--border); }
-.tenantIdentity { display: grid; gap: 2px; min-width: 130px; font-size: .8125rem; }
-.tenantIdentity strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tenantLabel, .projectSelectLabel > span { color: var(--muted-foreground); font-size: .6875rem; font-weight: 600; text-transform: uppercase; }
-.projectSelectLabel { position: relative; display: grid; gap: 2px; min-width: 210px; font-weight: 500; }
-.projectSelectLabel select { width: 100%; height: 24px; padding: 0 22px 0 0; border: 0; outline: 0; appearance: none; background: transparent; font-size: .8125rem; font-weight: 650; }
-.projectSelectLabel svg { position: absolute; right: 2px; bottom: 5px; pointer-events: none; }
+.tenantLabel, .accountSelectLabel > span, .projectSelectLabel > span { color: var(--muted-foreground); font-size: .6875rem; font-weight: 600; text-transform: uppercase; }
+.accountSelectLabel, .projectSelectLabel { position: relative; display: grid; gap: 2px; min-width: 180px; font-weight: 500; }
+.projectSelectLabel { min-width: 210px; }
+.accountSelectLabel select, .projectSelectLabel select { width: 100%; height: 24px; padding: 0 22px 0 0; border: 0; outline: 0; appearance: none; background: transparent; font-size: .8125rem; font-weight: 650; }
+.accountSelectLabel svg, .projectSelectLabel svg { position: absolute; right: 2px; bottom: 5px; pointer-events: none; }
 .tenantServices { display: flex; justify-content: center; gap: 4px; flex: 1 1 auto; }
 .tenantServices button, .tenantServices a { display: inline-flex; align-items: center; gap: 5px; min-height: 32px; padding: 0 10px; border: 0; border-radius: var(--radius); background: transparent; font-size: .8125rem; font-weight: 600; cursor: pointer; }
 .tenantServices button:hover, .tenantServices a:hover { background: var(--muted); }
@@ -223,9 +222,23 @@ code { padding: 3px 6px; border: 1px solid var(--border); border-radius: 4px; ba
 .switch span::after { content: ""; display: block; width: 16px; height: 16px; margin: 1px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.2); transition: transform 120ms; }
 .switch input:checked + span { background: var(--primary); border-color: var(--primary); }
 .switch input:checked + span::after { transform: translateX(14px); }
+.switch input:disabled + span { cursor: not-allowed; opacity: .5; }
 .fieldError { display: block; margin-top: 5px; color: var(--danger); }
 
-.mcpPanel, .harnessPanel { margin-top: 28px; padding-top: 28px; border-top: 1px solid var(--border); }
+.membersPanel, .mcpPanel, .harnessPanel { margin-top: 28px; padding-top: 28px; border-top: 1px solid var(--border); }
+.invitationInbox { display: grid; gap: 8px; margin-bottom: 18px; padding: 14px; border: 1px solid var(--foreground); border-radius: var(--radius); }
+.invitationInbox h2 { margin: 4px 0 0; }
+.incomingInvitation { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 12px; align-items: center; padding-top: 10px; border-top: 1px solid var(--border); }
+.incomingInvitation > div, .memberRow > div { display: grid; gap: 3px; min-width: 0; }
+.incomingInvitation small, .memberRow small { overflow: hidden; color: var(--muted-foreground); text-overflow: ellipsis; white-space: nowrap; }
+.inviteForm { display: grid; grid-template-columns: minmax(220px,1fr) auto; gap: 8px; align-items: end; max-width: 680px; }
+.inviteForm label { display: grid; gap: 7px; font-size: .8125rem; font-weight: 600; }
+.memberList { display: grid; gap: 2px; margin-top: 12px; border: 1px solid var(--border); border-radius: var(--radius); }
+.memberRow { display: grid; grid-template-columns: 34px minmax(0,1fr) auto 34px; gap: 10px; align-items: center; min-height: 58px; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+.memberRow:last-child { border-bottom: 0; }
+.memberRow .userAvatar, .pendingAvatar { width: 34px; height: 34px; }
+.pendingAvatar { display: grid; place-items: center; border: 1px dashed var(--border); border-radius: 50%; background: var(--muted); color: var(--muted-foreground); }
+.pendingMember { background: var(--muted); }
 .mcpEndpoint { display: grid; grid-template-columns: auto minmax(0,1fr) auto; gap: 8px; align-items: center; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius); font-size: .8125rem; }
 .mcpEndpoint > span { color: var(--muted-foreground); font-weight: 600; }
 .mcpEndpoint code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -288,7 +301,7 @@ legend { padding: 0 4px; font-size: .8125rem; font-weight: 600; }
 .legalContent h2 { margin-top: 20px; }
 
 @media (max-width: 960px) {
-  .tenantIdentity, .tenantDivider { display: none; }
+  .accountSelectLabel, .tenantDivider { display: none; }
   .tenantProfile > span:last-child { display: none; }
   .projectGrid { grid-template-columns: repeat(2,minmax(0,1fr)); }
   .statGrid { grid-template-columns: repeat(2,minmax(0,1fr)); }
@@ -319,6 +332,7 @@ legend { padding: 0 4px; font-size: .8125rem; font-weight: 600; }
   .harnessGroup.wide { grid-column: auto; }
   .flagGrid, .runtimeGrid { grid-template-columns: 1fr; }
   .mcpCreate, .secretReveal { grid-template-columns: 1fr; align-items: stretch; }
+  .inviteForm { grid-template-columns: 1fr; }
   .secretReveal .iconButton { justify-self: end; }
   .qrBlock { grid-template-columns: 1fr; }
   .limitRow { grid-template-columns: 1fr 1fr; }
@@ -338,4 +352,8 @@ legend { padding: 0 4px; font-size: .8125rem; font-weight: 600; }
   .authShell { padding: 36px 14px; }
   .statGrid { grid-template-columns: 1fr; }
   .adminControls, .serviceAdminFields { grid-template-columns: 1fr; }
+  .incomingInvitation { grid-template-columns: 1fr; }
+  .memberRow { grid-template-columns: 34px minmax(0,1fr) auto; }
+  .memberRow > .badge { grid-column: 2; }
+  .memberRow > .iconButton { grid-column: 3; grid-row: 1 / span 2; }
 }

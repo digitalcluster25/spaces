@@ -95,13 +95,54 @@ export type McpCredential = {
   created_at: string;
 };
 
+export type ProjectMember = {
+  user_id: string;
+  role: "owner" | "member";
+  status: "active";
+  email: string | null;
+  display_name: string | null;
+  avatar_url: string | null;
+  created_at: string;
+};
+
+export type ProjectInvitation = {
+  id: string;
+  email: string;
+  role: "member";
+  status: "pending";
+  delivery_status: "pending" | "sending" | "sent" | "failed";
+  delivery_error: string | null;
+  expires_at: string;
+  created_at: string;
+};
+
+export type ProjectAccess = {
+  role: "owner" | "member";
+  members: ProjectMember[];
+  invitations: ProjectInvitation[];
+};
+
+export type IncomingInvitation = {
+  invitation_id: string;
+  project_id: string;
+  project_name: string;
+  account_id: string;
+  account_name: string;
+  invited_by_name: string | null;
+  expires_at: string;
+};
+
 export type Workspace = {
   profile: Profile;
   account: Account;
+  accounts: Account[];
+  accountRole: "owner" | "member";
   projects: Project[];
   services: Service[];
   projectServices: ProjectService[];
   mcpCredentials: McpCredential[];
+  projectAccess: ProjectAccess | null;
+  incomingInvitations: IncomingInvitation[];
   harness: HarnessState | null;
   harnessVersion: HarnessVersion | null;
 };
@@ -200,7 +241,7 @@ export async function loadWorkspace(session: Session): Promise<Workspace> {
   const client = requireClient();
   const [profileResult, membershipResult, projectsResult, servicesResult] = await Promise.all([
     client.from("profiles").select("*").eq("id", session.user.id).single(),
-    client.from("account_memberships").select("account_id").eq("user_id", session.user.id).eq("status", "active").limit(1).single(),
+    client.from("account_memberships").select("account_id,role").eq("user_id", session.user.id).eq("status", "active"),
     client.from("projects").select("*").order("is_system", { ascending: false }).order("created_at"),
     client.from("spaces_services").select("*").eq("status", "active").order("sort_order"),
   ]);
@@ -208,12 +249,19 @@ export async function loadWorkspace(session: Session): Promise<Workspace> {
   const firstError = profileResult.error || membershipResult.error || projectsResult.error || servicesResult.error;
   if (firstError) throw firstError;
 
-  const accountResult = await client.from("accounts").select("*").eq("id", membershipResult.data.account_id).single();
-  if (accountResult.error) throw accountResult.error;
+  const accountIds = (membershipResult.data ?? []).map((item) => item.account_id);
+  if (!accountIds.length) throw new Error("У пользователя нет активного аккаунта");
+  const accountsResult = await client.from("accounts").select("*").in("id", accountIds).eq("status", "active").order("created_at");
+  if (accountsResult.error) throw accountsResult.error;
 
-  const projects = (projectsResult.data ?? []) as Project[];
+  const accounts = (accountsResult.data ?? []) as Account[];
   const profile = profileResult.data as Profile;
-  const account = accountResult.data as Account;
+  let tabAccountId: string | null = null;
+  try { tabAccountId = window.sessionStorage.getItem(`spaces:active-account:${session.user.id}`); } catch { /* Browser storage can be disabled. */ }
+  const account = accounts.find((item) => item.id === tabAccountId) ?? accounts[0];
+  if (!account) throw new Error("Активный аккаунт недоступен");
+  const accountRole = (membershipResult.data ?? []).find((item) => item.account_id === account.id)?.role as "owner" | "member";
+  const projects = ((projectsResult.data ?? []) as Project[]).filter((project) => project.account_id === account.id);
   const activeProjects = projects.filter((project) => project.status === "active");
   let tabProjectId: string | null = null;
   try {
@@ -235,10 +283,18 @@ export async function loadWorkspace(session: Session): Promise<Workspace> {
     : [{ data: [], error: null }, { data: [], error: null }];
   if (projectServicesResult.error || mcpCredentialsResult.error) throw projectServicesResult.error || mcpCredentialsResult.error;
 
-  const harnessResult = activeProjectId
-    ? await client.from("project_harness_settings").select("*").eq("project_id", activeProjectId).maybeSingle()
-    : { data: null, error: null };
-  if (harnessResult.error) throw harnessResult.error;
+  const [harnessResult, projectAccessResult, incomingInvitationsResult] = await Promise.all([
+    activeProjectId
+      ? client.from("project_harness_settings").select("*").eq("project_id", activeProjectId).maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
+    activeProjectId
+      ? client.rpc("get_project_access", { p_project_id: activeProjectId })
+      : Promise.resolve({ data: null, error: null }),
+    client.rpc("list_my_project_invitations"),
+  ]);
+  if (harnessResult.error || projectAccessResult.error || incomingInvitationsResult.error) {
+    throw harnessResult.error || projectAccessResult.error || incomingInvitationsResult.error;
+  }
   const harness = harnessResult.data as HarnessState | null;
   const harnessVersionResult = harness?.active_version_id
     ? await client.from("harness_versions").select("*").eq("id", harness.active_version_id).maybeSingle()
@@ -248,10 +304,14 @@ export async function loadWorkspace(session: Session): Promise<Workspace> {
   return {
     profile: { ...profile, active_project_id: activeProjectId },
     account,
+    accounts,
+    accountRole,
     projects,
     services: (servicesResult.data ?? []) as Service[],
     projectServices: (projectServicesResult.data ?? []) as ProjectService[],
     mcpCredentials: (mcpCredentialsResult.data ?? []) as McpCredential[],
+    projectAccess: projectAccessResult.data as ProjectAccess | null,
+    incomingInvitations: (incomingInvitationsResult.data ?? []) as IncomingInvitation[],
     harness,
     harnessVersion: harnessVersionResult.data as HarnessVersion | null,
   };
@@ -261,13 +321,18 @@ export function setActiveProjectForTab(accountId: string, projectId: string) {
   window.sessionStorage.setItem(`spaces:active-project:${accountId}`, projectId);
 }
 
-export async function createProject(input: {
+export function setActiveAccountForTab(userId: string, accountId: string) {
+  window.sessionStorage.setItem(`spaces:active-account:${userId}`, accountId);
+}
+
+export async function createProject(accountId: string, input: {
   name: string;
   description?: string;
   logoUrl?: string;
   services: string[];
 }) {
-  const { error } = await requireClient().rpc("create_project", {
+  const { error } = await requireClient().rpc("create_account_project", {
+    p_account_id: accountId,
     project_name: input.name,
     project_description: input.description || null,
     project_logo_url: input.logoUrl || null,
@@ -328,6 +393,37 @@ export async function createMcpCredential(projectId: string, name: string, expir
 
 export async function revokeMcpCredential(credentialId: string) {
   const { error } = await requireClient().rpc("revoke_mcp_credential", { p_credential_id: credentialId });
+  if (error) throw error;
+}
+
+export async function createProjectInvitation(projectId: string, email: string) {
+  const { error } = await requireClient().rpc("create_project_invitation", {
+    p_project_id: projectId,
+    p_email: email,
+  });
+  if (error) throw error;
+}
+
+export async function acceptProjectInvitation(invitationId: string) {
+  const { data, error } = await requireClient().rpc("accept_project_invitation", {
+    p_invitation_id: invitationId,
+  });
+  if (error) throw error;
+  return data as { account_id: string; project_id: string };
+}
+
+export async function revokeProjectInvitation(invitationId: string) {
+  const { error } = await requireClient().rpc("revoke_project_invitation", {
+    p_invitation_id: invitationId,
+  });
+  if (error) throw error;
+}
+
+export async function removeProjectMember(projectId: string, userId: string) {
+  const { error } = await requireClient().rpc("remove_project_member", {
+    p_project_id: projectId,
+    p_user_id: userId,
+  });
   if (error) throw error;
 }
 
