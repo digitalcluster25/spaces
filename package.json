@@ -10,8 +10,9 @@
     "test:harness": "npm --prefix harness test",
     "test:integration": "node tests/project-members.integration.mjs && node tests/superadmin-mfa.integration.mjs && node tests/billing.integration.mjs",
     "test:billing": "node --test infrastructure/billing/server.test.mjs",
+    "test:security": "node --test src/security.test.mjs",
     "test:e2e": "playwright test",
-    "test": "npm run test:harness && npm run test:billing && npm run test:e2e"
+    "test": "npm run test:harness && npm run test:billing && npm run test:security && npm run test:e2e"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.54.0",

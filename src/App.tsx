@@ -69,6 +69,7 @@ import {
   type Service,
   type Workspace,
 } from "./platform";
+import { requiresSuperadminMfa } from "./security";
 
 type AuthMode = "login" | "register" | "forgot";
 
@@ -123,23 +124,29 @@ function useWorkspace(session: Session | null) {
 
 export function App() {
   const { session, loading: authLoading } = useSession();
-  const workspaceState = useWorkspace(session);
   const path = window.location.pathname;
   const onAdminHost = window.location.hostname.startsWith("superadminko.");
+  const mfaRequired = requiresSuperadminMfa(session?.user.email, path, window.location.hostname);
   const authMode: AuthMode | null =
     path === "/login" ? "login" : path === "/register" ? "register" : path === "/forgot" ? "forgot" : null;
 
   if (path === "/auth-bridge" && !onAdminHost) return <AuthBridge session={session} loading={authLoading} />;
   if (onAdminHost && !session) return <SuperadminSessionBridge />;
 
-  if (session?.user.email?.toLowerCase() === "digitalcluster25@gmail.com") {
+  if (session && mfaRequired) {
     return (
       <MfaBoundary session={session}>
-        <AppContent session={session} authLoading={authLoading} workspaceState={workspaceState} path={path} authMode={authMode} />
+        <RoutedApp session={session} authLoading={authLoading} path={path} authMode={authMode} />
       </MfaBoundary>
     );
   }
 
+  return <RoutedApp session={session} authLoading={authLoading} path={path} authMode={authMode} />;
+}
+
+function RoutedApp({ session, authLoading, path, authMode }: { session: Session | null; authLoading: boolean; path: string; authMode: AuthMode | null }) {
+  const needsWorkspace = window.location.hostname.startsWith("superadminko.") || ["/account", "/launch", "/superadmin"].includes(path);
+  const workspaceState = useWorkspace(needsWorkspace ? session : null);
   return <AppContent session={session} authLoading={authLoading} workspaceState={workspaceState} path={path} authMode={authMode} />;
 }
 
@@ -249,6 +256,7 @@ function MfaBoundary({ session, children }: { session: Session; children: React.
 }
 
 function MfaSetup({ onVerified }: { onVerified: () => void }) {
+  const preparing = React.useRef(false);
   const [factorId, setFactorId] = React.useState("");
   const [qrCode, setQrCode] = React.useState("");
   const [secret, setSecret] = React.useState("");
@@ -258,8 +266,10 @@ function MfaSetup({ onVerified }: { onVerified: () => void }) {
   const [working, setWorking] = React.useState(false);
 
   React.useEffect(() => {
-    if (!supabase) return;
-    supabase.auth.mfa.listFactors().then(({ data, error }) => {
+    if (!supabase || preparing.current) return;
+    preparing.current = true;
+    async function prepare() {
+      const { data, error } = await supabase!.auth.mfa.listFactors();
       if (error) {
         setMessage(error.message);
         setMode("verify");
@@ -269,10 +279,20 @@ function MfaSetup({ onVerified }: { onVerified: () => void }) {
       if (factor) {
         setFactorId(factor.id);
         setMode("verify");
-      } else {
-        setMode("enroll");
+        return;
       }
-    });
+
+      for (const pending of data.all.filter((item) => item.factor_type === "totp" && item.status === "unverified")) {
+        const { error: removeError } = await supabase!.auth.mfa.unenroll({ factorId: pending.id });
+        if (removeError) {
+          setMessage(removeError.message);
+          setMode("enroll");
+          return;
+        }
+      }
+      await enroll();
+    }
+    void prepare();
   }, []);
 
   async function enroll() {
@@ -304,7 +324,7 @@ function MfaSetup({ onVerified }: { onVerified: () => void }) {
       <div className="securityCard">
         <span className="securityIcon"><ShieldCheck size={22} /></span>
         <div><span className="sectionKicker">superadmin security</span><h1>Двухфакторная защита</h1><p>Для владельца Spaces второй фактор обязателен при каждом новом входе.</p></div>
-        {mode === "loading" ? <div className="notice"><LoaderCircle className="spin" size={16} />Проверяем доступные факторы</div> : mode === "enroll" ? (
+        {mode === "loading" ? <div className="notice"><LoaderCircle className="spin" size={16} />Готовим защищённый вход</div> : mode === "enroll" ? (
           <button className="button buttonPrimary buttonFull" disabled={working} onClick={() => void enroll()}>{working ? "Создаём..." : "Настроить приложение-аутентификатор"}</button>
         ) : (
           <form className="mfaForm" onSubmit={verify}>
