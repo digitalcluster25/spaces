@@ -1,5 +1,22 @@
 # Spaces Project Instructions
 
+## Outline-First Development Memory
+
+Before researching, changing code, running migrations, or deploying, open the
+Spaces Outline workspace and read this entry point:
+
+- `https://outline.spaces.community/doc/00-start-here-protokol-vneshnej-pamyati-ZpJWbC75ES`
+
+Then read `01 Текущее состояние платформы`, `02 Очередь разработки`, the only
+ACTIVE SPC task, its latest checkpoint, and linked ADRs. There is no code work
+without a task in Outline. After every material phase, append a checkpoint.
+Before ending a session, update the task, current state, release evidence, and
+the exact next step.
+
+Outline is the source of truth for requirements, task state, decisions, and
+verification evidence. Git remains the source of truth for code and immutable
+published artifacts. Never store secrets in Outline.
+
 ## Product Concept
 
 Spaces is the main website and account hub for a set of approximately 20 separate services hosted on subdomains.
