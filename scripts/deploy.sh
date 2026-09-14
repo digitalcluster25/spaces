@@ -28,7 +28,7 @@ if [ "$deployed" != "$remote" ] || [ ! -f "$site_dir/index.html" ]; then
   rsync -a --delete dist/ "$site_dir/"
   install -m 0644 infrastructure/spaces-site/docker-compose.yml /opt/spaces/docker-compose.yml
   install -m 0644 infrastructure/spaces-site/nginx.conf /opt/spaces/nginx.conf
-  docker compose -f /opt/spaces/docker-compose.yml up -d
+  docker compose -f /opt/spaces/docker-compose.yml up -d --force-recreate
 fi
 
 install -m 0755 scripts/deploy.sh /opt/spaces/bin/deploy.sh

@@ -11,6 +11,7 @@ import {
   ChevronDown,
   Command,
   Copy,
+  CreditCard,
   ExternalLink,
   Fingerprint,
   KeyRound,
@@ -41,10 +42,12 @@ import {
   adminSetAccountLimit,
   adminSetAccountStatus,
   adminSetSubscription,
+  adminUpdatePlanBilling,
   adminUpdatePlanLimit,
   archiveProject,
   authReady,
   createProject,
+  createBillingCheckout,
   createMcpCredential,
   createServiceTicket,
   createProjectInvitation,
@@ -669,7 +672,13 @@ function AccountLimitEditor({ account, limits, overrides, confirm }: { account: 
 }
 
 function PlansAdmin({ data, confirm }: { data: AdminData; confirm: (text: string, action: () => Promise<void>) => void }) {
-  return <div className="planColumns">{data.plans.map((plan) => <section className="planSection" key={plan.id}><div className="sectionHeader"><div><h2>{plan.name}</h2><p>{plan.price_cents ? "$" + (plan.price_cents / 100).toFixed(0) + " / " + (plan.billing_mode === "seat" ? "место" : "аккаунт") : "Системный тариф"}</p></div><code>{plan.code}</code></div><div className="dataList">{data.limits.filter((limit) => limit.plan_id === plan.id).map((limit) => <LimitAdminRow key={limit.key} planCode={plan.code} limit={limit} confirm={confirm} />)}</div></section>)}</div>;
+  return <div className="planColumns">{data.plans.map((plan) => <section className="planSection" key={plan.id}><div className="sectionHeader"><div><h2>{plan.name}</h2><p>{plan.price_cents ? "$" + (plan.price_cents / 100).toFixed(0) + " / " + (plan.billing_mode === "seat" ? "место" : "аккаунт") : "Системный тариф"}</p></div><code>{plan.code}</code></div>{["golden", "corporate"].includes(plan.code) && <PlanBillingEditor plan={plan} confirm={confirm} />}<div className="dataList">{data.limits.filter((limit) => limit.plan_id === plan.id).map((limit) => <LimitAdminRow key={limit.key} planCode={plan.code} limit={limit} confirm={confirm} />)}</div></section>)}</div>;
+}
+
+function PlanBillingEditor({ plan, confirm }: { plan: AdminData["plans"][number]; confirm: (text: string, action: () => Promise<void>) => void }) {
+  const [testId, setTestId] = React.useState(plan.creem_test_product_id ?? "");
+  const [liveId, setLiveId] = React.useState(plan.creem_live_product_id ?? "");
+  return <div className="planBillingEditor"><label>Creem Test product ID<input value={testId} onChange={(event) => setTestId(event.target.value)} placeholder="prod_..." /></label><label>Creem Live product ID<input value={liveId} onChange={(event) => setLiveId(event.target.value)} placeholder="prod_..." /></label><button className="button buttonOutline" onClick={() => confirm(`Обновить привязку Creem для тарифа «${plan.name}».`, () => adminUpdatePlanBilling(plan.code, testId, liveId))}>Сохранить Creem</button></div>;
 }
 
 function LimitAdminRow({ planCode, limit, confirm }: { planCode: string; limit: PlanLimit; confirm: (text: string, action: () => Promise<void>) => void }) {
@@ -835,6 +844,7 @@ function ProjectDashboard({ session, workspace, refresh }: { session: Session; w
         {!visibleProjects.length && <div className="emptyState">В этом разделе пока нет проектов.</div>}
       </div>
 
+      {canManageAccount && <BillingPanel session={session} workspace={workspace} refresh={refresh} />}
       {activeProject?.status === "active" && <ProjectWorkspace session={session} project={activeProject} workspace={workspace} refresh={refresh} />}
       {dialog && <ProjectDialog accountId={workspace.account.id} state={dialog} services={workspace.services} onClose={() => setDialog(null)} onSaved={async () => { setDialog(null); await refresh(); }} />}
       {confirmProject && (
@@ -849,6 +859,48 @@ function ProjectDashboard({ session, workspace, refresh }: { session: Session; w
       )}
     </section>
   );
+}
+
+function BillingPanel({ session, workspace, refresh }: { session: Session; workspace: Workspace; refresh: () => Promise<void> }) {
+  const [seats, setSeats] = React.useState(Math.max(1, workspace.subscription?.seats ?? 2));
+  const [working, setWorking] = React.useState("");
+  const [message, setMessage] = React.useState("");
+  const currentPlan = workspace.plans.find((plan) => plan.id === workspace.subscription?.plan_id);
+  const billingSuccess = new URLSearchParams(window.location.search).get("billing") === "success";
+
+  React.useEffect(() => {
+    if (!billingSuccess) return;
+    window.history.replaceState(null, "", "/account");
+    const timer = window.setTimeout(() => void refresh(), 2000);
+    return () => window.clearTimeout(timer);
+  }, [billingSuccess, refresh]);
+
+  async function openCheckout(planCode: string, unitCount: number) {
+    const checkoutTab = window.open("about:blank", "_blank");
+    if (checkoutTab) checkoutTab.opener = null;
+    setWorking(planCode);
+    setMessage("");
+    try {
+      const url = await createBillingCheckout(session, workspace.account.id, planCode, unitCount);
+      if (checkoutTab) checkoutTab.location.replace(url);
+      else window.location.assign(url);
+    } catch (cause) {
+      checkoutTab?.close();
+      setMessage(cause instanceof Error ? cause.message : "Не удалось открыть оплату");
+    } finally {
+      setWorking("");
+    }
+  }
+
+  const plans = workspace.plans
+    .filter((plan) => ["golden", "corporate"].includes(plan.code))
+    .sort((left, right) => ["golden", "corporate"].indexOf(left.code) - ["golden", "corporate"].indexOf(right.code));
+  return <section className="billingPanel"><div className="sectionHeader"><div><span className="sectionKicker"><CreditCard size={14} />оплата</span><h2>Тариф аккаунта</h2><p>Оплата действует для всех проектов этого аккаунта.</p></div><div className="billingStatus"><strong>{currentPlan?.name ?? "Пробный период"}</strong><span className={`status status-${workspace.subscription?.status === "active" ? "ready" : "disabled"}`}>{billingStatusLabel(workspace.subscription?.status)}</span></div></div>{billingSuccess && <div className="notice">Оплата завершена. Обновляем статус подписки.</div>}{message && <div className="notice errorNotice">{message}</div>}<div className="billingPlans">{plans.map((plan) => <article className="billingPlan" key={plan.id}><div><strong>{plan.name}</strong><p>${(plan.price_cents / 100).toFixed(0)} в месяц {plan.billing_mode === "seat" ? "за участника" : "за аккаунт"} · 14 дней бесплатно</p></div>{plan.billing_mode === "seat" && <label>Участники<input type="number" min={1} max={1000} value={seats} onChange={(event) => setSeats(Math.max(1, Number(event.target.value) || 1))} /></label>}<button className="button buttonPrimary" disabled={Boolean(working)} onClick={() => void openCheckout(plan.code, plan.billing_mode === "seat" ? seats : 1)}>{working === plan.code ? "Открываем..." : "Выбрать"}</button></article>)}</div>{workspace.subscription?.current_period_end && <p className="billingPeriod">Текущий период до {new Date(workspace.subscription.current_period_end).toLocaleDateString("ru")}</p>}</section>;
+}
+
+function billingStatusLabel(status?: string) {
+  const labels: Record<string, string> = { trialing: "Активен", active: "Активен", past_due: "Нужна оплата", paused: "Приостановлен", canceled: "Отменён", expired: "Завершён" };
+  return labels[status ?? ""] ?? "Не подключён";
 }
 
 function IncomingInvitations({ session, workspace, refresh }: { session: Session; workspace: Workspace; refresh: () => Promise<void> }) {

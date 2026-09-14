@@ -27,3 +27,12 @@ services:
     command: ["node", "/app/server.js"]
     volumes:
       - /opt/spaces/repo/infrastructure/provisioner/server.js:/app/server.js:ro
+  billing:
+    image: node:20-alpine
+    container_name: spaces-billing
+    restart: unless-stopped
+    env_file:
+      - /opt/spaces/billing.env
+    command: ["node", "/app/server.js"]
+    volumes:
+      - /opt/spaces/repo/infrastructure/billing/server.js:/app/server.js:ro

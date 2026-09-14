@@ -145,6 +145,8 @@ export type Workspace = {
   incomingInvitations: IncomingInvitation[];
   harness: HarnessState | null;
   harnessVersion: HarnessVersion | null;
+  plans: Plan[];
+  subscription: Subscription | null;
 };
 
 export type Plan = {
@@ -154,8 +156,11 @@ export type Plan = {
   price_cents: number;
   currency: string;
   billing_mode: string;
+  billing_period: string | null;
   is_active: boolean;
   is_public: boolean;
+  creem_test_product_id: string | null;
+  creem_live_product_id: string | null;
 };
 
 export type PlanLimit = {
@@ -174,6 +179,8 @@ export type Subscription = {
   seats: number;
   current_period_end: string | null;
   trial_ends_at: string | null;
+  creem_customer_id: string | null;
+  creem_subscription_id: string | null;
 };
 
 export type AccountLimitOverride = {
@@ -239,14 +246,15 @@ function requireClient() {
 
 export async function loadWorkspace(session: Session): Promise<Workspace> {
   const client = requireClient();
-  const [profileResult, membershipResult, projectsResult, servicesResult] = await Promise.all([
+  const [profileResult, membershipResult, projectsResult, servicesResult, plansResult] = await Promise.all([
     client.from("profiles").select("*").eq("id", session.user.id).single(),
     client.from("account_memberships").select("account_id,role").eq("user_id", session.user.id).eq("status", "active"),
     client.from("projects").select("*").order("is_system", { ascending: false }).order("created_at"),
     client.from("spaces_services").select("*").eq("status", "active").order("sort_order"),
+    client.from("plans").select("*").eq("is_active", true).eq("is_public", true).order("price_cents"),
   ]);
 
-  const firstError = profileResult.error || membershipResult.error || projectsResult.error || servicesResult.error;
+  const firstError = profileResult.error || membershipResult.error || projectsResult.error || servicesResult.error || plansResult.error;
   if (firstError) throw firstError;
 
   const accountIds = (membershipResult.data ?? []).map((item) => item.account_id);
@@ -275,13 +283,18 @@ export async function loadWorkspace(session: Session): Promise<Workspace> {
       ? profile.active_project_id
       : activeProjects[0]?.id ?? null;
   const projectIds = projects.map((project) => project.id);
-  const [projectServicesResult, mcpCredentialsResult] = projectIds.length
-    ? await Promise.all([
-        client.from("project_services").select("*").in("project_id", projectIds),
-        client.from("mcp_credentials").select("id,project_id,name,scopes,expires_at,last_used_at,revoked_at,created_at").in("project_id", projectIds).order("created_at", { ascending: false }),
-      ])
-    : [{ data: [], error: null }, { data: [], error: null }];
-  if (projectServicesResult.error || mcpCredentialsResult.error) throw projectServicesResult.error || mcpCredentialsResult.error;
+  const [projectServicesResult, mcpCredentialsResult, subscriptionResult] = await Promise.all([
+    projectIds.length
+      ? client.from("project_services").select("*").in("project_id", projectIds)
+      : Promise.resolve({ data: [], error: null }),
+    projectIds.length
+      ? client.from("mcp_credentials").select("id,project_id,name,scopes,expires_at,last_used_at,revoked_at,created_at").in("project_id", projectIds).order("created_at", { ascending: false })
+      : Promise.resolve({ data: [], error: null }),
+    client.from("account_subscriptions").select("*").eq("account_id", account.id).maybeSingle(),
+  ]);
+  if (projectServicesResult.error || mcpCredentialsResult.error || subscriptionResult.error) {
+    throw projectServicesResult.error || mcpCredentialsResult.error || subscriptionResult.error;
+  }
 
   const [harnessResult, projectAccessResult, incomingInvitationsResult] = await Promise.all([
     activeProjectId
@@ -314,6 +327,8 @@ export async function loadWorkspace(session: Session): Promise<Workspace> {
     incomingInvitations: (incomingInvitationsResult.data ?? []) as IncomingInvitation[],
     harness,
     harnessVersion: harnessVersionResult.data as HarnessVersion | null,
+    plans: (plansResult.data ?? []) as Plan[],
+    subscription: subscriptionResult.data as Subscription | null,
   };
 }
 
@@ -482,6 +497,26 @@ export async function adminUpdatePlanLimit(planCode: string, limit: Omit<PlanLim
     p_unit: limit.unit,
     p_status: limit.status,
     p_description: limit.description,
+  });
+  if (error) throw error;
+}
+
+export async function createBillingCheckout(session: Session, accountId: string, planCode: string, seats: number) {
+  const response = await fetch("/api/billing/checkout", {
+    method: "POST",
+    headers: { authorization: `Bearer ${session.access_token}`, "content-type": "application/json" },
+    body: JSON.stringify({ accountId, planCode, seats }),
+  });
+  const data = await response.json().catch(() => null);
+  if (!response.ok || !data?.checkoutUrl) throw new Error(data?.error || "Не удалось создать оплату");
+  return data.checkoutUrl as string;
+}
+
+export async function adminUpdatePlanBilling(planCode: string, testProductId: string, liveProductId: string) {
+  const { error } = await requireClient().rpc("admin_update_plan_billing", {
+    p_plan_code: planCode,
+    p_creem_test_product_id: testProductId,
+    p_creem_live_product_id: liveProductId,
   });
   if (error) throw error;
 }

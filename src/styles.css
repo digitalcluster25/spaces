@@ -147,6 +147,8 @@ code { padding: 3px 6px; border: 1px solid var(--border); border-radius: 4px; ba
 .adminControls select, .serviceAdminFields select, .limitRow select { min-height: 38px; padding: 0 9px; border: 1px solid var(--input); border-radius: var(--radius); background: #fff; }
 .planColumns { display: grid; gap: 24px; }
 .planSection { padding-bottom: 24px; border-bottom: 1px solid var(--border); }
+.planBillingEditor { display: grid; grid-template-columns: repeat(2,minmax(180px,1fr)) auto; gap: 8px; align-items: end; margin-bottom: 12px; padding: 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--muted); }
+.planBillingEditor label { display: grid; gap: 5px; font-size: .75rem; font-weight: 600; }
 .limitRow { display: grid; grid-template-columns: minmax(220px,1fr) 110px 90px 110px auto; gap: 8px; align-items: center; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius); font-size: .8125rem; }
 .limitRow > div { display: grid; justify-items: start; gap: 4px; }
 .serviceAdminFields { grid-template-columns: repeat(2,minmax(160px,1fr)); }
@@ -207,6 +209,14 @@ code { padding: 3px 6px; border: 1px solid var(--border); border-radius: 4px; ba
 .emptyState { grid-column: 1 / -1; padding: 32px; border: 1px dashed var(--border); border-radius: var(--radius); color: var(--muted-foreground); text-align: center; }
 
 .workspaceSection { margin-top: 42px; padding-top: 28px; border-top: 1px solid var(--border); }
+.billingPanel { margin-top: 42px; padding-top: 28px; border-top: 1px solid var(--border); }
+.billingStatus { display: flex; align-items: center; gap: 8px; }
+.billingPlans { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; }
+.billingPlan { display: grid; grid-template-columns: minmax(0,1fr) auto auto; gap: 12px; align-items: end; padding: 14px 16px; border: 1px solid var(--border); border-radius: var(--radius); }
+.billingPlan > div { align-self: center; }
+.billingPlan p, .billingPeriod { margin: 4px 0 0; color: var(--muted-foreground); font-size: .8125rem; }
+.billingPlan label { display: grid; gap: 5px; font-size: .75rem; font-weight: 600; }
+.billingPlan input { width: 90px; }
 .sectionHeader { justify-content: space-between; gap: 18px; margin-bottom: 14px; }
 .sectionHeader h2 { margin: 5px 0 2px; }
 .sectionHeader p { max-width: 720px; margin: 0; font-size: .875rem; }
@@ -307,6 +317,8 @@ legend { padding: 0 4px; font-size: .8125rem; font-weight: 600; }
   .statGrid { grid-template-columns: repeat(2,minmax(0,1fr)); }
   .adminRow { grid-template-columns: 1fr; }
   .adminControls, .serviceAdminFields { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .planBillingEditor { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .planBillingEditor .button { grid-column: 1 / -1; }
   .limitRow { grid-template-columns: minmax(180px,1fr) 90px 70px 100px auto; }
 }
 
@@ -325,6 +337,7 @@ legend { padding: 0 4px; font-size: .8125rem; font-weight: 600; }
   .consolePanel { max-width: 560px; }
   .pageHeader { align-items: flex-start; }
   .projectGrid { grid-template-columns: 1fr; }
+  .billingPlans { grid-template-columns: 1fr; }
   .serviceRow { grid-template-columns: 1fr; }
   .serviceActions { justify-content: flex-start; flex-wrap: wrap; }
   .harnessGrid { grid-template-columns: 1fr; }
@@ -352,6 +365,9 @@ legend { padding: 0 4px; font-size: .8125rem; font-weight: 600; }
   .authShell { padding: 36px 14px; }
   .statGrid { grid-template-columns: 1fr; }
   .adminControls, .serviceAdminFields { grid-template-columns: 1fr; }
+  .planBillingEditor, .billingPlan { grid-template-columns: 1fr; }
+  .planBillingEditor .button { grid-column: auto; }
+  .billingStatus { align-items: flex-start; flex-direction: column; }
   .incomingInvitation { grid-template-columns: 1fr; }
   .memberRow { grid-template-columns: 34px minmax(0,1fr) auto; }
   .memberRow > .badge { grid-column: 2; }
