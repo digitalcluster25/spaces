@@ -395,11 +395,11 @@ export async function createServiceTicket(projectId: string, serviceSlug: string
   return data as string;
 }
 
-export async function createMcpCredential(projectId: string, name: string, expiresAt: string | null) {
+export async function createMcpCredential(projectId: string, name: string, expiresAt: string | null, scopes: string[]) {
   const { data, error } = await requireClient().rpc("create_mcp_credential", {
     p_project_id: projectId,
     p_name: name,
-    p_scopes: ["openseo:*"],
+    p_scopes: scopes,
     p_expires_at: expiresAt,
   });
   if (error) throw error;

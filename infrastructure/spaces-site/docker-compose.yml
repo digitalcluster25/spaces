@@ -36,3 +36,30 @@ services:
     command: ["node", "/app/server.js"]
     volumes:
       - /opt/spaces/repo/infrastructure/billing/server.js:/app/server.js:ro
+  mcp-gateway:
+    image: node:20-alpine
+    container_name: spaces-mcp-gateway
+    restart: unless-stopped
+    env_file:
+      - /opt/spaces/mcp-gateway.env
+    command: ["node", "/app/server.js"]
+    volumes:
+      - /opt/spaces/repo/infrastructure/mcp-gateway/server.js:/app/server.js:ro
+    networks:
+      - default
+      - outline
+      - openseo
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.spaces-mcp.rule=Host(`mcp.spaces.community`)"
+      - "traefik.http.routers.spaces-mcp.entrypoints=websecure"
+      - "traefik.http.routers.spaces-mcp.tls.certresolver=letsencrypt"
+      - "traefik.http.services.spaces-mcp.loadbalancer.server.port=3000"
+
+networks:
+  outline:
+    external: true
+    name: outline_default
+  openseo:
+    external: true
+    name: openseo_default

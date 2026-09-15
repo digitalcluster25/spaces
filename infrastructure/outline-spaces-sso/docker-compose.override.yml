@@ -1,5 +1,9 @@
 services:
+  outline:
+    image: outlinewiki/outline:1.10.0
+
   spaces-sso:
+    image: outlinewiki/outline:1.10.0
     volumes:
       - ./spaces-sso:/spaces-sso:ro
       - /opt/spaces/repo/infrastructure/shared:/spaces-shared:ro

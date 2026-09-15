@@ -3,6 +3,7 @@ const crypto = require("crypto");
 const jwt = require("jsonwebtoken");
 const { Pool } = require("pg");
 const { createPanelPage, readSignedContext } = require("/spaces-shared/tenant-panel.js");
+const { createMemoryAdapter } = require("/spaces-sso/memory-adapter.js");
 
 const port = Number(process.env.PORT || 3000);
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
@@ -10,6 +11,7 @@ const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABA
 const teamSubdomain = process.env.SPACES_OUTLINE_TEAM_SUBDOMAIN || "spaces";
 const serviceSecret = process.env.SPACES_SERVICE_SECRET;
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const handleMemory = createMemoryAdapter({ pool });
 
 function isAuthorized(req) {
   const provided = String(req.headers.authorization || "").replace(/^Bearer\s+/i, "");
@@ -250,7 +252,7 @@ async function readJson(req) {
   let body = "";
   for await (const chunk of req) {
     body += chunk;
-    if (body.length > 8192) throw new Error("Request too large");
+    if (body.length > 65536) throw Object.assign(new Error("Request too large"), { status: 413 });
   }
   return JSON.parse(body || "{}");
 }
@@ -287,6 +289,21 @@ const server = http.createServer(async (req, res) => {
       const result = await provisionOutline(await readJson(req));
       res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
       return res.end(JSON.stringify(result));
+    }
+    if (url.pathname === "/spaces-internal/memory" && req.method === "POST") {
+      if (!isAuthorized(req)) {
+        res.writeHead(401, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+        return res.end(JSON.stringify({ error: "Unauthorized" }));
+      }
+      try {
+        const result = await handleMemory(await readJson(req));
+        res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+        return res.end(JSON.stringify(result));
+      } catch (error) {
+        const status = Number(error.status) || 500;
+        res.writeHead(status, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+        return res.end(JSON.stringify({ error: status < 500 ? error.message : "Memory adapter unavailable" }));
+      }
     }
     if (url.pathname !== "/spaces-sso/exchange" || req.method !== "POST") return redirect(res, "/home", 404);
 

@@ -252,9 +252,13 @@ code { padding: 3px 6px; border: 1px solid var(--border); border-radius: 4px; ba
 .mcpEndpoint { display: grid; grid-template-columns: auto minmax(0,1fr) auto; gap: 8px; align-items: center; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius); font-size: .8125rem; }
 .mcpEndpoint > span { color: var(--muted-foreground); font-weight: 600; }
 .mcpEndpoint code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.mcpCreate { display: grid; grid-template-columns: minmax(220px,1fr) 150px auto; gap: 8px; align-items: end; margin-top: 10px; }
+.mcpCreate { display: grid; grid-template-columns: minmax(220px,1fr) 150px minmax(250px,auto) auto; gap: 8px; align-items: end; margin-top: 10px; }
 .mcpCreate label { display: grid; gap: 7px; font-size: .8125rem; font-weight: 600; }
 .mcpCreate select { min-height: 40px; padding: 0 10px; border: 1px solid var(--input); border-radius: var(--radius); background: #fff; }
+.scopePicker { display: flex; flex-wrap: wrap; gap: 8px 16px; min-width: 250px; padding: 7px 11px; border: 1px solid var(--border); border-radius: var(--radius); }
+.scopePicker legend { padding: 0 4px; color: var(--muted-foreground); font-size: .75rem; }
+.scopePicker label { display: inline-flex; flex-direction: row; align-items: center; gap: 6px; font-size: .8125rem; font-weight: 500; }
+.scopePicker input { width: 15px; height: 15px; }
 .secretReveal { display: grid; grid-template-columns: minmax(180px,.55fr) minmax(220px,1fr) auto auto; gap: 8px; align-items: center; margin-top: 10px; padding: 12px; border: 1px solid var(--foreground); border-radius: var(--radius); }
 .secretReveal p { margin: 3px 0 0; font-size: .75rem; }
 .secretReveal code { overflow-wrap: anywhere; user-select: all; }

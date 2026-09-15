@@ -8,11 +8,12 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host 0.0.0.0",
     "test:harness": "npm --prefix harness test",
-    "test:integration": "node tests/project-members.integration.mjs && node tests/superadmin-mfa.integration.mjs && node tests/billing.integration.mjs",
+    "test:integration": "node tests/project-members.integration.mjs && node tests/superadmin-mfa.integration.mjs && node tests/billing.integration.mjs && node tests/mcp-gateway.integration.mjs",
     "test:billing": "node --test infrastructure/billing/server.test.mjs",
+    "test:mcp": "node --test infrastructure/mcp-gateway/server.test.mjs infrastructure/outline-spaces-sso/memory-adapter.test.cjs",
     "test:security": "node --test src/security.test.mjs",
     "test:e2e": "playwright test",
-    "test": "npm run test:harness && npm run test:billing && npm run test:security && npm run test:e2e"
+    "test": "npm run test:harness && npm run test:billing && npm run test:mcp && npm run test:security && npm run test:e2e"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.54.0",

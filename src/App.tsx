@@ -1054,6 +1054,7 @@ function McpPanel({ project, workspace, refresh, canManage }: { project: Project
   const credentials = workspace.mcpCredentials.filter((credential) => credential.project_id === project.id);
   const [name, setName] = React.useState("");
   const [lifetime, setLifetime] = React.useState("90");
+  const [scopes, setScopes] = React.useState(["memory:read", "memory:write", "openseo:*"]);
   const [revealed, setRevealed] = React.useState<{ token: string; name: string } | null>(null);
   const [revokeTarget, setRevokeTarget] = React.useState<string | null>(null);
   const [working, setWorking] = React.useState(false);
@@ -1065,7 +1066,7 @@ function McpPanel({ project, workspace, refresh, canManage }: { project: Project
     try {
       const days = Number(lifetime);
       const expiresAt = lifetime === "permanent" ? null : new Date(Date.now() + days * 86_400_000).toISOString();
-      const credential = await createMcpCredential(project.id, name, expiresAt);
+      const credential = await createMcpCredential(project.id, name, expiresAt, scopes);
       setRevealed({ token: credential.token, name: credential.name });
       setName("");
       await refresh();
@@ -1096,18 +1097,30 @@ function McpPanel({ project, workspace, refresh, canManage }: { project: Project
     setMessage("Скопировано.");
   }
 
+  function toggleScope(scope: string) {
+    setScopes((current) => {
+      if (current.includes(scope)) {
+        if (scope === "memory:read") return current.filter((item) => item !== "memory:read" && item !== "memory:write");
+        return current.filter((item) => item !== scope);
+      }
+      if (scope === "memory:write") return Array.from(new Set([...current, "memory:read", "memory:write"]));
+      return [...current, scope];
+    });
+  }
+
   if (!canManage) return <section className="mcpPanel" id="mcp-access"><div className="sectionHeader"><div><span className="sectionKicker"><KeyRound size={14} />agent access</span><h2>MCP-доступ проекта</h2><p>Ключами внешних агентов управляет владелец проекта.</p></div></div></section>;
 
   return (
     <section className="mcpPanel" id="mcp-access">
       <div className="sectionHeader">
-        <div><span className="sectionKicker"><KeyRound size={14} />agent access</span><h2>MCP-доступ проекта</h2><p>Отдельный отзывной ключ для каждого внешнего агента. Ключ даёт доступ только к OpenSEO этого проекта.</p></div>
+        <div><span className="sectionKicker"><KeyRound size={14} />agent access</span><h2>MCP-доступ проекта</h2><p>Один отзывной ключ подключает агента к разрешённым сервисам и памяти только этого проекта.</p></div>
       </div>
-      <div className="mcpEndpoint"><span>Endpoint</span><code>https://openseo.spaces.community/mcp</code><button className="iconButton" type="button" title="Копировать endpoint" onClick={() => void copy("https://openseo.spaces.community/mcp")}><Copy size={15} /></button></div>
+      <div className="mcpEndpoint"><span>Endpoint</span><code>https://mcp.spaces.community/mcp</code><button className="iconButton" type="button" title="Копировать endpoint" onClick={() => void copy("https://mcp.spaces.community/mcp")}><Copy size={15} /></button></div>
       <div className="mcpCreate">
         <label>Название ключа<input value={name} maxLength={80} placeholder="Например, Codex на MacBook" onChange={(event) => setName(event.target.value)} /></label>
         <label>Срок действия<select value={lifetime} onChange={(event) => setLifetime(event.target.value)}><option value="30">30 дней</option><option value="90">90 дней</option><option value="365">1 год</option><option value="permanent">Без срока</option></select></label>
-        <button className="button buttonPrimary" type="button" disabled={working || !name.trim()} onClick={() => void create()}>Создать ключ</button>
+        <fieldset className="scopePicker"><legend>Доступ</legend><label><input type="checkbox" checked={scopes.includes("memory:read")} onChange={() => toggleScope("memory:read")} />Память: чтение</label><label><input type="checkbox" checked={scopes.includes("memory:write")} onChange={() => toggleScope("memory:write")} />Память: запись</label><label><input type="checkbox" checked={scopes.includes("openseo:*")} onChange={() => toggleScope("openseo:*")} />OpenSEO</label></fieldset>
+        <button className="button buttonPrimary" type="button" disabled={working || !name.trim() || !scopes.length} onClick={() => void create()}>Создать ключ</button>
       </div>
       {revealed && <div className="secretReveal"><div><strong>{revealed.name}</strong><p>Сохраните ключ сейчас. После закрытия он больше не будет показан.</p></div><code>{revealed.token}</code><button className="button buttonOutline" type="button" onClick={() => void copy(revealed.token)}><Copy size={15} />Копировать</button><button className="iconButton" type="button" title="Скрыть ключ" onClick={() => setRevealed(null)}><X size={15} /></button></div>}
       {message && <div className="notice">{message}</div>}
@@ -1115,7 +1128,7 @@ function McpPanel({ project, workspace, refresh, canManage }: { project: Project
         {credentials.map((credential) => {
           const expired = Boolean(credential.expires_at && new Date(credential.expires_at).getTime() <= Date.now());
           const active = !credential.revoked_at && !expired;
-          return <div className="credentialRow" key={credential.id}><div><strong>{credential.name}</strong><small>{active ? "Активен" : credential.revoked_at ? "Отозван" : "Истёк"} · {credential.expires_at ? `до ${new Date(credential.expires_at).toLocaleDateString("ru")}` : "без срока"}{credential.last_used_at ? ` · использован ${new Date(credential.last_used_at).toLocaleString("ru")}` : " · ещё не использован"}</small></div><code>openseo:*</code>{active && <button className="iconButton" type="button" title="Отозвать ключ" onClick={() => setRevokeTarget(credential.id)}><Trash2 size={15} /></button>}</div>;
+          return <div className="credentialRow" key={credential.id}><div><strong>{credential.name}</strong><small>{active ? "Активен" : credential.revoked_at ? "Отозван" : "Истёк"} · {credential.expires_at ? `до ${new Date(credential.expires_at).toLocaleDateString("ru")}` : "без срока"}{credential.last_used_at ? ` · использован ${new Date(credential.last_used_at).toLocaleString("ru")}` : " · ещё не использован"}</small></div><code>{credential.scopes.join(" · ")}</code>{active && <button className="iconButton" type="button" title="Отозвать ключ" onClick={() => setRevokeTarget(credential.id)}><Trash2 size={15} /></button>}</div>;
         })}
         {!credentials.length && <div className="emptyState">У проекта пока нет MCP-ключей.</div>}
       </div>
