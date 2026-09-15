@@ -7,6 +7,7 @@ const requiredTitles = [
   "03 Журнал решений ADR",
   "04 Релизы и проверки",
 ];
+const outlineApiScopes = ["/api/documents.update"];
 
 function clean(value, max) {
   const result = String(value || "").trim();
@@ -149,7 +150,7 @@ function createMemoryAdapter({ pool, outlineApiUrl = "http://outline:3000", publ
     await pool.query(
       `insert into "apiKeys" (id, name, hash, "last4", scope, "userId", "createdAt", "updatedAt", "expiresAt")
        values ($1, 'Spaces Memory Adapter', $2, $3, $4, $5, now(), now(), now() + interval '2 minutes')`,
-      [id, hash, token.slice(-4), ["documents.info", "documents.update"], user.rows[0].id],
+      [id, hash, token.slice(-4), outlineApiScopes, user.rows[0].id],
     );
     try {
       return await callback(token);
@@ -239,4 +240,4 @@ function createMemoryAdapter({ pool, outlineApiUrl = "http://outline:3000", publ
   };
 }
 
-module.exports = { activeTaskSection, checkpointText, completionTexts, createMemoryAdapter, decisionText, outlineProxyHeaders, requiredTitles };
+module.exports = { activeTaskSection, checkpointText, completionTexts, createMemoryAdapter, decisionText, outlineApiScopes, outlineProxyHeaders, requiredTitles };

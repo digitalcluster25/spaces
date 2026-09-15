@@ -1,6 +1,6 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
-const { activeTaskSection, checkpointText, completionTexts, decisionText, outlineProxyHeaders } = require("./memory-adapter.js");
+const { activeTaskSection, checkpointText, completionTexts, decisionText, outlineApiScopes, outlineProxyHeaders } = require("./memory-adapter.js");
 
 test("formats a complete checkpoint without accepting an arbitrary project", () => {
   const text = checkpointText({
@@ -68,4 +68,8 @@ test("preserves the public HTTPS origin for internal Outline API calls", () => {
     host: "outline.spaces.community",
     "x-forwarded-proto": "https",
   });
+});
+
+test("grants the adapter only the Outline document update route", () => {
+  assert.deepEqual(outlineApiScopes, ["/api/documents.update"]);
 });
