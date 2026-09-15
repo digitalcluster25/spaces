@@ -1,6 +1,6 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
-const { activeTaskSection, checkpointText, completionTexts, decisionText } = require("./memory-adapter.js");
+const { activeTaskSection, checkpointText, completionTexts, decisionText, outlineProxyHeaders } = require("./memory-adapter.js");
 
 test("formats a complete checkpoint without accepting an arbitrary project", () => {
   const text = checkpointText({
@@ -61,4 +61,11 @@ Checkpoint: ready
   assert.equal(activeTaskSection(queue, "SPC-0000"), null);
   assert.equal(activeTaskSection(`${queue}\n\n## SPC-0003 — duplicate\n\nСтатус: ACTIVE`, "SPC-0001"), null);
   assert.match(activeTaskSection("## SPC-0001 — gateway\n\n**Статус:** ACTIVE\\n**Ответственный:** AI", "SPC-0001"), /gateway/);
+});
+
+test("preserves the public HTTPS origin for internal Outline API calls", () => {
+  assert.deepEqual(outlineProxyHeaders("https://outline.spaces.community"), {
+    host: "outline.spaces.community",
+    "x-forwarded-proto": "https",
+  });
 });

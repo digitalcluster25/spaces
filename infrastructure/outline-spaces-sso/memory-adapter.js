@@ -91,7 +91,12 @@ function activeTaskSection(text, expectedTaskId = null) {
   return active[0].trim();
 }
 
-function createMemoryAdapter({ pool, outlineApiUrl = "http://outline:3000" }) {
+function outlineProxyHeaders(publicOrigin) {
+  const url = new URL(publicOrigin);
+  return { host: url.host, "x-forwarded-proto": url.protocol.slice(0, -1) };
+}
+
+function createMemoryAdapter({ pool, outlineApiUrl = "http://outline:3000", publicOrigin = process.env.URL || "https://outline.spaces.community" }) {
   async function workspace(projectId) {
     const result = await pool.query(
       `select t.id as team_id, c.id as collection_id, c."urlId" as collection_url_id
@@ -157,7 +162,12 @@ function createMemoryAdapter({ pool, outlineApiUrl = "http://outline:3000" }) {
     return withApiKey(space, async (token) => {
       const response = await fetch(`${outlineApiUrl}/api/documents.update`, {
         method: "POST",
-        headers: { authorization: `Bearer ${token}`, "content-type": "application/json", accept: "application/json" },
+        headers: {
+          authorization: `Bearer ${token}`,
+          "content-type": "application/json",
+          accept: "application/json",
+          ...outlineProxyHeaders(publicOrigin),
+        },
         body: JSON.stringify({ id: documentId, ...body, done: true }),
       });
       const result = await response.json().catch(() => null);
@@ -229,4 +239,4 @@ function createMemoryAdapter({ pool, outlineApiUrl = "http://outline:3000" }) {
   };
 }
 
-module.exports = { activeTaskSection, checkpointText, completionTexts, createMemoryAdapter, decisionText, requiredTitles };
+module.exports = { activeTaskSection, checkpointText, completionTexts, createMemoryAdapter, decisionText, outlineProxyHeaders, requiredTitles };
