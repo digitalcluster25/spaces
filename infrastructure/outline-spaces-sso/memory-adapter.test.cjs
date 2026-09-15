@@ -60,4 +60,5 @@ Checkpoint: ready
   assert.match(activeTaskSection(queue, "SPC-0001"), /gateway/);
   assert.equal(activeTaskSection(queue, "SPC-0000"), null);
   assert.equal(activeTaskSection(`${queue}\n\n## SPC-0003 — duplicate\n\nСтатус: ACTIVE`, "SPC-0001"), null);
+  assert.match(activeTaskSection("## SPC-0001 — gateway\n\n**Статус:** ACTIVE\\n**Ответственный:** AI", "SPC-0001"), /gateway/);
 });

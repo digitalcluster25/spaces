@@ -58,8 +58,8 @@ async function insertCredential(projectId, userId, name, scopes) {
 function toolResult(call) {
   assert.equal(call.status, 200);
   assert.equal(call.body?.error, undefined);
-  assert.equal(call.body?.result?.isError, undefined);
   const text = call.body?.result?.content?.[0]?.text;
+  assert.equal(call.body?.result?.isError, undefined, text || "MCP tool failed");
   return typeof text === "string" ? JSON.parse(text) : call.body?.result;
 }
 

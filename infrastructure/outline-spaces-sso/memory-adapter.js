@@ -85,7 +85,7 @@ function completionTexts(args) {
 
 function activeTaskSection(text, expectedTaskId = null) {
   const sections = String(text || "").match(/(?:^|\n)#{1,3}\s+[^\n]*SPC-\d{4,}[^\n]*[\s\S]*?(?=\n#{1,3}\s|$)/g) || [];
-  const active = sections.filter((section) => /(?:^|\n)Статус:\s*ACTIVE\s*(?:\n|$)/i.test(section));
+  const active = sections.filter((section) => /(?:^|\n)(?:\*\*)?Статус:(?:\*\*)?\s*ACTIVE\b/i.test(section));
   if (active.length !== 1) return null;
   if (expectedTaskId && !new RegExp(`\\b${expectedTaskId}\\b`).test(active[0])) return null;
   return active[0].trim();
