@@ -1,4 +1,9 @@
 services:
+  open-seo:
+    networks:
+      default:
+        aliases:
+          - openseo.spaces.community
   spaces-sso:
     image: node:20-alpine
     container_name: openseo-spaces-sso

@@ -130,5 +130,6 @@ test("proxies OpenSEO through the same project key", async () => {
     assert.equal(upstream.body.method, "tools/list");
     assert.equal(upstream.headers.authorization, "Bearer spc_test");
     assert.equal(upstream.headers["mcp-protocol-version"], "2025-06-18");
+    assert.equal(upstream.headers["x-forwarded-proto"], "https");
   });
 });

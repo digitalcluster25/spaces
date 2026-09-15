@@ -282,12 +282,13 @@ export function createGateway({ fetchImpl = fetch, now = () => Date.now(), rateL
 
   async function openSeo(token, method, params = {}) {
     return post(
-      process.env.OPENSEO_MCP_URL || "http://open-seo:3001/mcp",
+      process.env.OPENSEO_MCP_URL || "http://openseo.spaces.community:3001/mcp",
       {
         authorization: `Bearer ${token}`,
         "content-type": "application/json",
         accept: "application/json, text/event-stream",
         "mcp-protocol-version": protocolVersion,
+        "x-forwarded-proto": "https",
       },
       { jsonrpc: "2.0", id: 1, method, params },
     );
