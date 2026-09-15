@@ -15,7 +15,7 @@ const headers = {
 };
 
 async function rest(path, options = {}) {
-  const response = await fetch(`${supabaseUrl}/rest/v1/${path}`, { headers: { ...headers, ...options.headers }, ...options });
+  const response = await fetch(`${supabaseUrl}/rest/v1/${path}`, { ...options, headers: { ...headers, ...options.headers } });
   const data = await response.json().catch(() => null);
   if (!response.ok) throw new Error(data?.message || data?.error || `Supabase request failed (${response.status})`);
   return data;
