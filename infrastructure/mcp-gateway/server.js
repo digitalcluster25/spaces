@@ -282,7 +282,7 @@ export function createGateway({ fetchImpl = fetch, now = () => Date.now(), rateL
 
   async function openSeo(token, method, params = {}) {
     return post(
-      process.env.OPENSEO_MCP_URL || "http://open-seo:3000/mcp",
+      process.env.OPENSEO_MCP_URL || "http://open-seo:3001/mcp",
       {
         authorization: `Bearer ${token}`,
         "content-type": "application/json",
