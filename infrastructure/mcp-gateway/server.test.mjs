@@ -99,6 +99,35 @@ test("read-only credentials cannot write memory", async () => {
   });
 });
 
+test("validates and forwards activation only for writable memory", async () => {
+  const calls = [];
+  await withServer(mockFetch(["memory:read", "memory:write"], calls), async (base) => {
+    const listed = await rpc(base, { method: "tools/list" });
+    const names = (await listed.json()).result.tools.map((tool) => tool.name);
+    assert(names.includes("memory.activate_task"));
+    const result = await rpc(base, {
+      method: "tools/call",
+      params: {
+        name: "memory.activate_task",
+        arguments: {
+          taskId: "SPC-0002",
+          title: "External client E2E",
+          goal: "Connect Codex.",
+          requirements: "Use project scopes.",
+          acceptance: "Bootstrap passes.",
+          rollback: "Revoke the key.",
+          firstCheckpoint: "STARTED.",
+          projectId: "attacker-project",
+        },
+      },
+    });
+    assert.equal(result.status, 200);
+    const outline = calls.find((call) => call.url.includes("outline.test"));
+    assert.equal(outline.body.operation, "activate_task");
+    assert.equal(outline.body.args.projectId, undefined);
+  });
+});
+
 test("revoked credentials fail on every request", async () => {
   const fetchImpl = async (url) => String(url).includes("exchange_mcp_gateway_credential")
     ? response(400, { message: "Invalid or expired MCP credential" })

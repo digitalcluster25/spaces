@@ -1,6 +1,21 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
-const { activeTaskSection, checkpointText, completionTexts, decisionText, outlineApiScopes, outlineProxyHeaders } = require("./memory-adapter.js");
+const { activationText, activeTaskSection, checkpointText, completionTexts, decisionText, outlineApiScopes, outlineProxyHeaders } = require("./memory-adapter.js");
+
+test("formats one complete active task", () => {
+  const text = activationText({
+    taskId: "SPC-0002",
+    title: "External client E2E",
+    goal: "Connect Codex.",
+    requirements: "* Project-bound key.",
+    acceptance: "* Bootstrap passes.",
+    rollback: "Revoke the key.",
+    firstCheckpoint: "STARTED.",
+  });
+  assert.match(text, /NEXT — SPC-0002/);
+  assert.match(text, /Статус: ACTIVE/);
+  assert.match(activeTaskSection(text, "SPC-0002"), /External client E2E/);
+});
 
 test("formats a complete checkpoint without accepting an arbitrary project", () => {
   const text = checkpointText({

@@ -87,6 +87,24 @@ function publicTools(context) {
   if (hasScope(context, writeScope)) {
     tools.push(
       {
+        name: "memory.activate_task",
+        description: "Activate one SPC task when the project queue has no other ACTIVE task.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            taskId: { type: "string", pattern: "^SPC-[0-9]{4,}$" },
+            title: { type: "string", minLength: 3, maxLength: 200 },
+            goal: { type: "string", minLength: 1, maxLength: 5000 },
+            requirements: { type: "string", minLength: 1, maxLength: 8000 },
+            acceptance: { type: "string", minLength: 1, maxLength: 8000 },
+            rollback: { type: "string", minLength: 1, maxLength: 4000 },
+            firstCheckpoint: { type: "string", minLength: 1, maxLength: 4000 },
+          },
+          required: ["taskId", "title", "goal", "requirements", "acceptance", "rollback", "firstCheckpoint"],
+          additionalProperties: false,
+        },
+      },
+      {
         name: "memory.append_checkpoint",
         description: "Append a structured checkpoint to the active Spaces task.",
         inputSchema: {
@@ -194,6 +212,17 @@ function validateMemoryInput(operation, input) {
       nextStep: stringField(args, "nextStep", { required: true, max: 2000 }),
     };
   }
+  if (operation === "activate_task") {
+    return {
+      taskId: stringField(args, "taskId", { required: true, pattern: /^SPC-[0-9]{4,}$/ }),
+      title: stringField(args, "title", { required: true, max: 200 }),
+      goal: stringField(args, "goal", { required: true, max: 5000 }),
+      requirements: stringField(args, "requirements", { required: true, max: 8000 }),
+      acceptance: stringField(args, "acceptance", { required: true, max: 8000 }),
+      rollback: stringField(args, "rollback", { required: true, max: 4000 }),
+      firstCheckpoint: stringField(args, "firstCheckpoint", { required: true, max: 4000 }),
+    };
+  }
   if (operation === "record_decision") {
     return {
       id: stringField(args, "id", { required: true, pattern: /^ADR-[0-9]{4,}$/ }),
@@ -297,7 +326,7 @@ export function createGateway({ fetchImpl = fetch, now = () => Date.now(), rateL
   async function callTool(context, token, name, args) {
     if (name.startsWith("memory.")) {
       if (!memoryReadable(context)) throw Object.assign(new Error("memory:read scope required"), { status: 403, code: -32003 });
-      if (["memory.append_checkpoint", "memory.record_decision", "memory.complete_task"].includes(name) && !hasScope(context, writeScope)) {
+      if (["memory.activate_task", "memory.append_checkpoint", "memory.record_decision", "memory.complete_task"].includes(name) && !hasScope(context, writeScope)) {
         throw Object.assign(new Error("memory:write scope required"), { status: 403, code: -32003 });
       }
       const operation = name.slice("memory.".length);

@@ -39,6 +39,35 @@ function checkpointText(args) {
   return lines.join("\n\n");
 }
 
+function activationText(args) {
+  const taskId = requirePattern(clean(args.taskId, 40), /^SPC-[0-9]{4,}$/, "task ID");
+  const title = clean(args.title, 200);
+  const goal = clean(args.goal, 5000);
+  const requirements = clean(args.requirements, 8000);
+  const acceptance = clean(args.acceptance, 8000);
+  const rollback = clean(args.rollback, 4000);
+  const firstCheckpoint = clean(args.firstCheckpoint, 4000);
+  if (!title || !goal || !requirements || !acceptance || !rollback || !firstCheckpoint) {
+    throw Object.assign(new Error("Active task is incomplete"), { status: 400 });
+  }
+  return [
+    `## NEXT — ${taskId}`,
+    `**Название:** ${title}`,
+    `Статус: ACTIVE`,
+    `**Ответственный:** AI-агент под контролем владельца`,
+    `### Цель`,
+    goal,
+    `### Требования`,
+    requirements,
+    `### Критерии приёмки`,
+    acceptance,
+    `### План отката`,
+    rollback,
+    `### Первый checkpoint`,
+    firstCheckpoint,
+  ].join("\n\n");
+}
+
 function decisionText(args) {
   const id = requirePattern(clean(args.id, 40), /^ADR-[0-9]{4,}$/, "ADR ID");
   const status = requirePattern(clean(args.status, 40), /^(PROPOSED|ACCEPTED|REJECTED|SUPERSEDED)$/, "ADR status");
@@ -213,6 +242,12 @@ function createMemoryAdapter({ pool, outlineApiUrl = "http://outline:3000", publ
       );
       return { query, results: result.rows };
     }
+    if (operation === "activate_task") {
+      const queue = await findDocument(space, "02 Очередь разработки");
+      if (activeTaskSection(queue.text)) throw Object.assign(new Error("Another task is already ACTIVE"), { status: 409 });
+      await updateDocument(space, queue.id, { text: `\n\n${activationText(args)}`, editMode: "append" });
+      return { activated: true, documentId: queue.id, taskId: args.taskId };
+    }
     if (operation === "append_checkpoint") {
       const queue = await findDocument(space, "02 Очередь разработки");
       const text = checkpointText(args);
@@ -240,4 +275,4 @@ function createMemoryAdapter({ pool, outlineApiUrl = "http://outline:3000", publ
   };
 }
 
-module.exports = { activeTaskSection, checkpointText, completionTexts, createMemoryAdapter, decisionText, outlineApiScopes, outlineProxyHeaders, requiredTitles };
+module.exports = { activationText, activeTaskSection, checkpointText, completionTexts, createMemoryAdapter, decisionText, outlineApiScopes, outlineProxyHeaders, requiredTitles };
