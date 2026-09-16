@@ -55,6 +55,10 @@ if [ "$(cat /opt/openseo/spaces-sso-revision 2>/dev/null || true)" != "$openseo_
   printf '%s\n' "$openseo_sso_hash" > /opt/openseo/spaces-sso-revision
 fi
 
+if ! docker inspect openseo --format '{{json (index .NetworkSettings.Networks "openseo_default").Aliases}}' | grep -q 'openseo.spaces.community'; then
+  docker compose -f /opt/openseo/docker-compose.yml -f /opt/openseo/docker-compose.sso.yml up -d --force-recreate open-seo
+fi
+
 openseo_patch_hash="$(find infrastructure/openseo-patches -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | cut -d' ' -f1)"
 if [ "$(cat /opt/openseo/spaces-patch-revision 2>/dev/null || true)" != "$openseo_patch_hash" ]; then
   if ! docker image inspect openseo-spaces:base-20260912 >/dev/null 2>&1; then

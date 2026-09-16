@@ -1,11 +1,11 @@
 {
     "schema_version": 2,
-    "commit": "af403c6ca0e4054a7b766b703809bd3dacdf9ff7",
-    "indexed_at": "2026-09-15T10:46:49Z",
+    "commit": "0326a574b909c45d17aa2b44a481ca6c4cbec33f",
+    "indexed_at": "2026-09-16T08:40:28Z",
     "project": "spaces",
-    "nodes": 724,
-    "edges": 1463,
-    "original_size": 2490368,
-    "compressed_size": 476927,
-    "compression_level": 9
+    "nodes": 734,
+    "edges": 1474,
+    "original_size": 3080192,
+    "compressed_size": 553890,
+    "compression_level": 3
 }
