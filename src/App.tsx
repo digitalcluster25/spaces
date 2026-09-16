@@ -53,8 +53,10 @@ import {
   createProjectInvitation,
   loadWorkspace,
   loadAdminData,
+  previewHarnessUserConfig,
   restoreProject,
   removeProjectMember,
+  rollbackHarnessUserConfig,
   revokeMcpCredential,
   revokeProjectInvitation,
   saveHarnessUserConfig,
@@ -66,12 +68,17 @@ import {
   type Project,
   type AdminData,
   type PlanLimit,
+  type HarnessPreview,
+  type ProjectHarnessVersion,
   type Service,
   type Workspace,
 } from "./platform";
 import { requiresSuperadminMfa } from "./security";
 
 type AuthMode = "login" | "register" | "forgot";
+type HarnessView = "admin" | "user" | "effective" | "history";
+
+const harnessVersionsEnabled = import.meta.env.VITE_HARNESS_VERSIONS_ENABLED !== "false";
 
 function useSession() {
   const [session, setSession] = React.useState<Session | null>(null);
@@ -97,14 +104,19 @@ function useWorkspace(session: Session | null) {
   const [workspace, setWorkspace] = React.useState<Workspace | null>(null);
   const [loading, setLoading] = React.useState(Boolean(session));
   const [error, setError] = React.useState("");
+  const sessionId = React.useRef<string | null>(null);
 
   const refresh = React.useCallback(async () => {
     if (!session) {
+      sessionId.current = null;
       setWorkspace(null);
       setLoading(false);
       return;
     }
-    setLoading(true);
+    if (sessionId.current !== session.user.id) {
+      sessionId.current = session.user.id;
+      setLoading(true);
+    }
     setError("");
     try {
       setWorkspace(await loadWorkspace(session));
@@ -1141,11 +1153,46 @@ function statusLabel(status?: string) {
   return ({ ready: "Готов", provisioning: "Создаётся", error: "Ошибка", disabled: "Выключен", suspended: "Приостановлен", archived: "В архиве" } as Record<string, string>)[status ?? "disabled"];
 }
 
+function objectValue(value: unknown) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function HarnessAdminLayer({ config }: { config: Record<string, unknown> }) {
+  const identity = objectValue(config.identity);
+  const instructions = objectValue(config.instructions);
+  const runtime = objectValue(config.runtime);
+  const groups = ["security", "quality", "tooling", "response", "memory"];
+  return <div className="harnessLayer"><div className="harnessSummaryGrid"><section><span className="sectionKicker">identity</span><h3>{String(identity.name ?? "Harness")}</h3><p>{String(identity.purpose ?? "—")}</p></section><section><span className="sectionKicker">runtime</span><h3>{String(runtime.reasoning_effort ?? "—")}</h3><p>Повторы: {String(runtime.max_retries ?? "—")}</p></section></div><section className="harnessPrompt"><h3>Системный промпт</h3><p>{String(instructions.system_prompt ?? "—")}</p><h3>Правила выполнения</h3><p>{String(instructions.developer_rules ?? "—")}</p></section><div className="harnessRuleGroups">{groups.map((group) => <section key={group}><h3>{group}</h3>{Object.entries(objectValue(config[group])).map(([key, value]) => <div className="ruleRow" key={key}><span>{key.replace(/_/g, " ")}</span><strong>{value === true ? "Обязательно" : String(value)}</strong></div>)}</section>)}</div></div>;
+}
+
+function HarnessEvaluation({ report }: { report: HarnessPreview["evaluation_report"] }) {
+  return <section className={`evalReport ${report.passed ? "passed" : "failed"}`}><strong>{report.passed ? "Проверка пройдена" : "Активация заблокирована"}</strong><div className="evalChecks">{report.checks.map((check) => <div key={check.id}>{check.passed ? <Check size={15} /> : <X size={15} />}<span>{check.message}</span></div>)}</div></section>;
+}
+
+function HarnessEffectiveLayer({ preview }: { preview: HarnessPreview | null }) {
+  if (!preview) return <div className="emptyState">Итоговая конфигурация ещё не опубликована.</div>;
+  const preferences = objectValue(preview.effective_config.project_preferences);
+  return <div className="harnessLayer"><HarnessEvaluation report={preview.evaluation_report} />{preview.conflict_report.length > 0 && <section className="conflictList"><h3>Игнорируемые противоречия</h3>{preview.conflict_report.map((conflict, index) => <div className="notice errorNotice" key={`${conflict.field}-${index}`}><strong>{conflict.field}</strong><span>{conflict.reason}</span></div>)}</section>}<section><h3>Применяемые настройки проекта</h3><div className="effectivePreferences">{Object.entries(preferences).filter(([, value]) => String(value).trim()).map(([key, value]) => <div key={key}><strong>{key.replace(/_/g, " ")}</strong><p>{String(value)}</p></div>)}{!Object.values(preferences).some((value) => String(value).trim()) && <div className="emptyState">Проект использует административный слой без дополнений.</div>}</div></section><details className="configDetails"><summary>Полная итоговая конфигурация</summary><pre>{JSON.stringify(preview.effective_config, null, 2)}</pre></details></div>;
+}
+
 function HarnessPanel({ project, workspace, refresh, canManage }: { project: Project; workspace: Workspace; refresh: () => Promise<void>; canManage: boolean }) {
   const initial = workspace.harness?.user_config ?? {};
   const [config, setConfig] = React.useState<Record<string, unknown>>(initial);
+  const [view, setView] = React.useState<HarnessView>("user");
+  const [preview, setPreview] = React.useState<HarnessPreview | null>(null);
+  const [rollbackTarget, setRollbackTarget] = React.useState<ProjectHarnessVersion | null>(null);
+  const [confirmPublish, setConfirmPublish] = React.useState(false);
+  const [previewing, setPreviewing] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
   const [message, setMessage] = React.useState("");
+  const activeHistory = workspace.harnessHistory.find((version) => version.is_active) ?? null;
+  const activePreview: HarnessPreview | null = activeHistory && workspace.harnessVersion ? {
+    admin_config: workspace.harnessVersion.admin_config,
+    user_config: activeHistory.user_config,
+    effective_config: activeHistory.effective_config,
+    conflict_report: activeHistory.conflict_report,
+    evaluation_report: activeHistory.evaluation_report,
+  } : null;
   const fields = [
     ["system_context", "Системный контекст", "Цели, терминология и важные ограничения проекта"],
     ["objectives", "Цели проекта", "Какие результаты и метрики считаются важными"],
@@ -1161,15 +1208,39 @@ function HarnessPanel({ project, workspace, refresh, canManage }: { project: Pro
     ["example_outputs", "Эталонные примеры", "Примеры ответов и результатов, которые считаются качественными"],
   ] as const;
 
-  React.useEffect(() => setConfig(initial), [workspace.harness?.project_id, workspace.harness?.user_config]);
+  React.useEffect(() => { setConfig(initial); setPreview(null); }, [workspace.harness?.project_id, workspace.harness?.user_config]);
+
+  function changeField(key: string, value: string) {
+    setConfig((current) => ({ ...current, [key]: value }));
+    setPreview(null);
+    setMessage("");
+  }
+
+  async function runPreview() {
+    setPreviewing(true);
+    setMessage("");
+    try {
+      const result = await previewHarnessUserConfig(project.id, config);
+      setPreview(result);
+      setView("effective");
+      if (!result.evaluation_report.passed) setMessage("Проверка не пройдена. Публикация заблокирована.");
+    } catch (cause) {
+      setMessage(cause instanceof Error ? cause.message : "Не удалось проверить настройки");
+    } finally {
+      setPreviewing(false);
+    }
+  }
 
   async function save() {
     setSaving(true);
     setMessage("");
     try {
-      await saveHarnessUserConfig(project.id, config);
+      await saveHarnessUserConfig(project.id, preview?.user_config ?? config);
       await refresh();
-      setMessage("Настройки сохранены.");
+      setPreview(null);
+      setConfirmPublish(false);
+      setView("history");
+      setMessage("Новая версия опубликована.");
     } catch (cause) {
       setMessage(cause instanceof Error ? cause.message : "Не удалось сохранить настройки");
     } finally {
@@ -1186,17 +1257,38 @@ function HarnessPanel({ project, workspace, refresh, canManage }: { project: Pro
     }
   }
 
+  async function rollback() {
+    if (!rollbackTarget) return;
+    setSaving(true);
+    setMessage("");
+    try {
+      await rollbackHarnessUserConfig(project.id, rollbackTarget.id);
+      setRollbackTarget(null);
+      await refresh();
+      setView("history");
+      setMessage(`Версия ${rollbackTarget.sequence} восстановлена как новая версия.`);
+    } catch (cause) {
+      setMessage(cause instanceof Error ? cause.message : "Не удалось восстановить версию");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const actionLabels: Record<ProjectHarnessVersion["action"], string> = { initial: "Начальная", publish: "Публикация", admin_update: "Обновление правил", rollback: "Восстановление", migration: "Перенос" };
+
   return (
     <section className="harnessPanel">
-      <div className="sectionHeader"><div><span className="sectionKicker"><Settings2 size={14} />harness</span><h2>Настройки среды</h2><p>Административный слой задаёт обязательные правила. Пользовательский слой дополняет их и не может ослабить безопасность.</p></div><span className="badge dark">v{workspace.harnessVersion?.version ?? "—"}</span></div>
+      <div className="sectionHeader"><div><span className="sectionKicker"><Settings2 size={14} />harness</span><h2>Настройки среды</h2><p>Административный слой обязателен. Настройки проекта применяются только после проверки и подтверждения владельца.</p></div><div className="rowBadges"><span className="badge dark">admin v{workspace.harnessVersion?.version ?? "—"}</span><span className="badge">project v{activeHistory?.sequence ?? "—"}</span>{project.system_key === "spaces-root" && <span className="badge">Эталон</span>}</div></div>
       {canManage && workspace.harness?.offered_version_id && <div className="notice updateNotice"><span>Доступна новая версия административного шаблона. Она будет применена только после подтверждения.</span><button className="button buttonOutline" onClick={() => void acceptUpdate()}>Применить</button></div>}
-      <div className="harnessGrid">
-        {fields.map(([key, label, placeholder]) => <label key={key}>{label}<textarea value={String(config[key] ?? "")} readOnly={!canManage} onChange={(event) => setConfig((current) => ({ ...current, [key]: event.target.value }))} placeholder={placeholder} /></label>)}
-      </div>
-      <div className="notice"><ShieldCheck size={16} />Обязательные правила безопасности, изоляции проекта и проверки результата применяются без изменений.</div>
-      {workspace.harness?.conflict_report?.map((conflict, index) => <div className="notice errorNotice" key={index}>{conflict.field}: {conflict.reason}</div>)}
+      {harnessVersionsEnabled && <nav className="harnessTabs" aria-label="Слои Harness">{(["admin", "user", "effective", "history"] as HarnessView[]).map((item) => <button key={item} className={view === item ? "active" : ""} onClick={() => setView(item)}>{({ admin: "Административный", user: "Пользовательский", effective: "Итоговый", history: "История" } as Record<HarnessView, string>)[item]}</button>)}</nav>}
+      {(!harnessVersionsEnabled || view === "user") && <><div className="harnessGrid">{fields.map(([key, label, placeholder]) => <label key={key}>{label}<textarea value={String(config[key] ?? "")} readOnly={!canManage} onChange={(event) => changeField(key, event.target.value)} placeholder={placeholder} /></label>)}</div><div className="notice"><ShieldCheck size={16} />Обязательные правила безопасности, изоляции проекта и проверки результата применяются без изменений.</div>{canManage && <div className="harnessActions">{harnessVersionsEnabled ? <button className="button buttonPrimary" disabled={previewing} onClick={() => void runPreview()}>{previewing ? "Проверяем..." : "Проверить изменения"}</button> : <button className="button buttonPrimary" disabled={saving} onClick={() => void save()}>{saving ? "Сохраняем..." : "Сохранить настройки"}</button>}</div>}</>}
+      {harnessVersionsEnabled && view === "admin" && <HarnessAdminLayer config={workspace.harnessVersion?.admin_config ?? {}} />}
+      {harnessVersionsEnabled && view === "effective" && <><HarnessEffectiveLayer preview={preview ?? activePreview} />{canManage && preview?.evaluation_report.passed && <div className="harnessActions"><button className="button buttonPrimary" onClick={() => setConfirmPublish(true)}>Опубликовать версию</button></div>}</>}
+      {harnessVersionsEnabled && view === "history" && <div className="harnessHistory">{workspace.harnessHistory.map((version) => <article className={version.is_active ? "active" : ""} key={version.id}><div><div className="rowBadges"><strong>Версия {version.sequence}</strong>{version.is_active && <span className="badge dark">Активна</span>}<span className="badge">admin v{version.admin_version}</span></div><p>{actionLabels[version.action]} · {new Date(version.created_at).toLocaleString("ru")}</p><small>{version.author_name || version.author_email || version.created_by} · {version.evaluation_report.checks.filter((check) => check.passed).length}/{version.evaluation_report.checks.length} проверок</small></div>{canManage && !version.is_active && <button className="button buttonOutline" onClick={() => setRollbackTarget(version)}><RotateCcw size={15} />Восстановить</button>}</article>)}{!workspace.harnessHistory.length && <div className="emptyState">История версий пуста.</div>}</div>}
       {message && <div className="notice">{message}</div>}
-      {canManage ? <div className="harnessActions"><button className="button buttonPrimary" disabled={saving} onClick={() => void save()}>{saving ? "Сохраняем..." : "Сохранить настройки"}</button></div> : <div className="notice">Пользовательский слой этого проекта изменяет владелец.</div>}
+      {!canManage && <div className="notice">Пользовательский слой этого проекта изменяет владелец.</div>}
+      {confirmPublish && <ConfirmDialog title="Опубликовать Harness?" text="Проверенная конфигурация станет активной версией проекта. Предыдущая версия останется в истории." confirm="Опубликовать" working={saving} onClose={() => setConfirmPublish(false)} onConfirm={() => void save()} />}
+      {rollbackTarget && <ConfirmDialog title="Восстановить версию?" text={`Настройки версии ${rollbackTarget.sequence} будут повторно проверены с текущим административным слоем и опубликованы как новая версия.`} confirm="Восстановить" working={saving} onClose={() => setRollbackTarget(null)} onConfirm={() => void rollback()} />}
     </section>
   );
 }

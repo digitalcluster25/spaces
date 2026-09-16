@@ -73,6 +73,7 @@ export type HarnessState = {
   conflict_report: Array<{ field?: string; reason?: string }>;
   active_version_id: string | null;
   offered_version_id: string | null;
+  active_user_version_id: string | null;
 };
 
 export type HarnessVersion = {
@@ -82,6 +83,39 @@ export type HarnessVersion = {
   git_revision: string | null;
   status: string;
   test_report: Record<string, unknown> | null;
+  created_by: string;
+  created_at: string;
+  published_at: string | null;
+};
+
+export type HarnessPreview = {
+  admin_config: Record<string, unknown>;
+  user_config: Record<string, unknown>;
+  effective_config: Record<string, unknown>;
+  conflict_report: Array<{ field?: string; reason?: string }>;
+  evaluation_report: {
+    passed: boolean;
+    evaluated_at: string;
+    checks: Array<{ id: string; passed: boolean; message: string }>;
+  };
+};
+
+export type ProjectHarnessVersion = {
+  id: string;
+  sequence: number;
+  admin_version_id: string;
+  admin_version: number;
+  user_config: Record<string, unknown>;
+  effective_config: Record<string, unknown>;
+  conflict_report: Array<{ field?: string; reason?: string }>;
+  evaluation_report: HarnessPreview["evaluation_report"];
+  action: "initial" | "publish" | "admin_update" | "rollback" | "migration";
+  source_version_id: string | null;
+  created_by: string;
+  author_name: string | null;
+  author_email: string | null;
+  created_at: string;
+  is_active: boolean;
 };
 
 export type McpCredential = {
@@ -145,6 +179,7 @@ export type Workspace = {
   incomingInvitations: IncomingInvitation[];
   harness: HarnessState | null;
   harnessVersion: HarnessVersion | null;
+  harnessHistory: ProjectHarnessVersion[];
   plans: Plan[];
   subscription: Subscription | null;
 };
@@ -296,17 +331,20 @@ export async function loadWorkspace(session: Session): Promise<Workspace> {
     throw projectServicesResult.error || mcpCredentialsResult.error || subscriptionResult.error;
   }
 
-  const [harnessResult, projectAccessResult, incomingInvitationsResult] = await Promise.all([
+  const [harnessResult, harnessHistoryResult, projectAccessResult, incomingInvitationsResult] = await Promise.all([
     activeProjectId
       ? client.from("project_harness_settings").select("*").eq("project_id", activeProjectId).maybeSingle()
       : Promise.resolve({ data: null, error: null }),
+    activeProjectId
+      ? client.rpc("list_project_harness_versions", { p_project_id: activeProjectId })
+      : Promise.resolve({ data: [], error: null }),
     activeProjectId
       ? client.rpc("get_project_access", { p_project_id: activeProjectId })
       : Promise.resolve({ data: null, error: null }),
     client.rpc("list_my_project_invitations"),
   ]);
-  if (harnessResult.error || projectAccessResult.error || incomingInvitationsResult.error) {
-    throw harnessResult.error || projectAccessResult.error || incomingInvitationsResult.error;
+  if (harnessResult.error || harnessHistoryResult.error || projectAccessResult.error || incomingInvitationsResult.error) {
+    throw harnessResult.error || harnessHistoryResult.error || projectAccessResult.error || incomingInvitationsResult.error;
   }
   const harness = harnessResult.data as HarnessState | null;
   const harnessVersionResult = harness?.active_version_id
@@ -327,6 +365,7 @@ export async function loadWorkspace(session: Session): Promise<Workspace> {
     incomingInvitations: (incomingInvitationsResult.data ?? []) as IncomingInvitation[],
     harness,
     harnessVersion: harnessVersionResult.data as HarnessVersion | null,
+    harnessHistory: (harnessHistoryResult.data ?? []) as ProjectHarnessVersion[],
     plans: (plansResult.data ?? []) as Plan[],
     subscription: subscriptionResult.data as Subscription | null,
   };
@@ -443,9 +482,26 @@ export async function removeProjectMember(projectId: string, userId: string) {
 }
 
 export async function saveHarnessUserConfig(projectId: string, config: Record<string, unknown>) {
-  const { error } = await requireClient().rpc("update_harness_user_config", {
+  const { error } = await requireClient().rpc("publish_harness_user_config", {
     p_project_id: projectId,
     p_user_config: config,
+  });
+  if (error) throw error;
+}
+
+export async function previewHarnessUserConfig(projectId: string, config: Record<string, unknown>) {
+  const { data, error } = await requireClient().rpc("preview_harness_user_config", {
+    p_project_id: projectId,
+    p_user_config: config,
+  });
+  if (error) throw error;
+  return data as HarnessPreview;
+}
+
+export async function rollbackHarnessUserConfig(projectId: string, versionId: string) {
+  const { error } = await requireClient().rpc("rollback_harness_user_config", {
+    p_project_id: projectId,
+    p_version_id: versionId,
   });
   if (error) throw error;
 }
