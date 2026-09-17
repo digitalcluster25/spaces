@@ -161,8 +161,14 @@ code { padding: 3px 6px; border: 1px solid var(--border); border-radius: 4px; ba
 .auditSection { display: grid; gap: 12px; }
 .auditToolbar { display: flex; align-items: end; gap: 8px; }
 .auditToolbar label { display: grid; gap: 6px; font-size: .8125rem; font-weight: 600; }
+.auditToolbar .auditSearch { flex: 1; min-width: 220px; }
 .auditMeta { padding-top: 12px; border-top: 1px solid var(--border); }
 .auditMeta p { margin: 5px 0; font-size: .8125rem; }
+.operationsAdmin { display: grid; gap: 28px; }
+.adminSection { display: grid; gap: 12px; padding-top: 22px; border-top: 1px solid var(--border); }
+.rateLimitRow { grid-template-columns: minmax(220px,1fr) 110px 110px 120px auto; gap: 10px; }
+.rateLimitRow > label { display: grid; gap: 5px; font-size: .75rem; font-weight: 600; }
+.rateLimitRow .flagRow { display: flex; align-items: center; }
 .authBridgeFrame { position: fixed; width: 1px; height: 1px; border: 0; opacity: 0; pointer-events: none; }
 .adminEditor { padding: 16px; border: 1px solid var(--border); border-radius: var(--radius); }
 .adminEditor > label { display: grid; gap: 8px; font-size: .8125rem; font-weight: 600; }
@@ -384,6 +390,8 @@ legend { padding: 0 4px; font-size: .8125rem; font-weight: 600; }
   .planBillingEditor { grid-template-columns: repeat(2,minmax(0,1fr)); }
   .planBillingEditor .button { grid-column: 1 / -1; }
   .limitRow { grid-template-columns: minmax(180px,1fr) 90px 70px 100px auto; }
+  .rateLimitRow { grid-template-columns: minmax(220px,1fr) 100px 100px; }
+  .rateLimitRow > .button { grid-column: 3; }
 }
 
 @media (max-width: 760px) {
@@ -421,6 +429,11 @@ legend { padding: 0 4px; font-size: .8125rem; font-weight: 600; }
   .qrBlock { grid-template-columns: 1fr; }
   .limitRow { grid-template-columns: 1fr 1fr; }
   .limitRow > div { grid-column: 1 / -1; }
+  .rateLimitRow { grid-template-columns: 1fr 1fr; }
+  .rateLimitRow > div { grid-column: 1 / -1; }
+  .rateLimitRow > .button { grid-column: auto; }
+  .auditToolbar { align-items: stretch; flex-direction: column; }
+  .auditToolbar .auditSearch { min-width: 0; }
 }
 
 @media (max-width: 520px) {

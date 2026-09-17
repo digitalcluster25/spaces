@@ -171,6 +171,37 @@ test("rate limits a credential without logging its token", async () => {
   }, { rateLimit: 1 });
 });
 
+test("uses the database-backed production limiter without exposing the key", async () => {
+  const previous = process.env.MCP_DISTRIBUTED_RATE_LIMIT;
+  process.env.MCP_DISTRIBUTED_RATE_LIMIT = "true";
+  const calls = [];
+  const baseMock = mockFetch(["memory:read"], calls);
+  const fetchImpl = async (url, init) => {
+    if (String(url).includes("consume_mcp_rate_limit")) {
+      const body = JSON.parse(init.body);
+      calls.push({ url: String(url), body, headers: init.headers });
+      return response(200, { allowed: false, retry_after: 30, dimension: "credential" });
+    }
+    return baseMock(url, init);
+  };
+  try {
+    await withServer(fetchImpl, async (base) => {
+      const result = await fetch(`${base}/mcp`, {
+        method: "POST",
+        headers: { authorization: "Bearer spc_test", "content-type": "application/json", "x-forwarded-for": "198.51.100.9" },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "ping" }),
+      });
+      assert.equal(result.status, 429);
+      const limited = calls.find((call) => call.url.includes("consume_mcp_rate_limit"));
+      assert.equal(limited.body.p_ip, "198.51.100.9");
+      assert.equal(JSON.stringify(limited).includes("spc_test"), false);
+    });
+  } finally {
+    if (previous === undefined) delete process.env.MCP_DISTRIBUTED_RATE_LIMIT;
+    else process.env.MCP_DISTRIBUTED_RATE_LIMIT = previous;
+  }
+});
+
 test("proxies OpenSEO through the same project key", async () => {
   const calls = [];
   await withServer(mockFetch(["openseo:*"], calls), async (base) => {

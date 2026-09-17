@@ -1,0 +1,15 @@
+[Unit]
+Description=Spaces platform health monitor
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+EnvironmentFile=/opt/spaces/operations.env
+UMask=0077
+ExecStart=/usr/bin/node /opt/spaces/repo/infrastructure/operations/monitor.mjs
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full

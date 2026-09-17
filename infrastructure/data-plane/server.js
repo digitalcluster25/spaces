@@ -94,6 +94,19 @@ async function requireProjectOwner(token, projectId) {
   return access;
 }
 
+function clientIp(request) {
+  return String(request.headers["x-forwarded-for"] || "").split(",")[0].trim();
+}
+
+async function enforceDataRateLimit(request, projectId, actorId) {
+  if (process.env.DATA_DISTRIBUTED_RATE_LIMIT !== "true") return;
+  const result = await requestSupabase("/rest/v1/rpc/consume_data_rate_limit", {
+    method: "POST",
+    body: { p_project_id: projectId, p_actor_id: actorId, p_ip: clientIp(request) },
+  });
+  if (!result?.allowed) throw Object.assign(new Error("Rate limit exceeded"), { status: 429, retryAfter: result?.retry_after || 1 });
+}
+
 function secretInput(body, rotating = false) {
   const name = String(body.name || "").trim().toUpperCase();
   const kind = String(body.kind || "api_key");
@@ -126,9 +139,10 @@ function publicSecret(row) {
 
 async function listSecrets(request, response, url) {
   const token = bearer(request);
-  await authenticatedUser(token);
+  const user = await authenticatedUser(token);
   const projectId = url.searchParams.get("projectId") || "";
   await requireProjectOwner(token, projectId);
+  await enforceDataRateLimit(request, projectId, user.id);
   const rows = await requestSupabase("/rest/v1/project_secret_metadata", {
     query: `?select=id,project_id,name,kind,service_slug,description,status,version,rotated_at,created_at,updated_at&project_id=eq.${encodeURIComponent(projectId)}&status=neq.deleted&order=updated_at.desc`,
   });
@@ -141,6 +155,7 @@ async function saveSecret(request, response) {
   const body = await readJson(request);
   const projectId = String(body.projectId || "");
   await requireProjectOwner(token, projectId);
+  await enforceDataRateLimit(request, projectId, user.id);
   const input = secretInput(body, Boolean(body.secretId));
   const encrypted = encryptSecret(input.value);
   const stored = await requestSupabase("/rest/v1/rpc/store_project_secret_ciphertext", {
@@ -168,6 +183,11 @@ async function changeSecretStatus(request, response, secretId) {
   const body = await readJson(request);
   const status = request.method === "DELETE" ? "deleted" : String(body.status || "");
   if (!["active", "disabled", "deleted"].includes(status)) throw Object.assign(new Error("Unsupported status"), { status: 400 });
+  const metadata = await requestSupabase("/rest/v1/project_secret_metadata", { query: `?select=project_id&id=eq.${secretId}&limit=1` });
+  const projectId = metadata?.[0]?.project_id;
+  if (!projectId) throw Object.assign(new Error("Secret not found"), { status: 404 });
+  await requireProjectOwner(token, projectId);
+  await enforceDataRateLimit(request, projectId, user.id);
   const stored = await requestSupabase("/rest/v1/rpc/set_project_secret_status", {
     method: "POST",
     body: { p_secret_id: secretId, p_status: status, p_actor_id: user.id },

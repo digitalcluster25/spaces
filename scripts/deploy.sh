@@ -32,10 +32,34 @@ if [ "$deployed" != "$remote" ] || [ ! -f "$site_dir/index.html" ]; then
     printf 'SPACES_DATA_ENCRYPTION_KEY=%s\n' "$(openssl rand -hex 32)" >> /opt/spaces/data-plane.env
     printf 'DATA_PLANE_INTERNAL_SECRET=%s\n' "$(openssl rand -hex 32)" >> /opt/spaces/data-plane.env
   fi
+  grep -q '^DATA_DISTRIBUTED_RATE_LIMIT=' /opt/spaces/data-plane.env || printf 'DATA_DISTRIBUTED_RATE_LIMIT=true\n' >> /opt/spaces/data-plane.env
+  grep -q '^MCP_DISTRIBUTED_RATE_LIMIT=' /opt/spaces/mcp-gateway.env || printf 'MCP_DISTRIBUTED_RATE_LIMIT=true\n' >> /opt/spaces/mcp-gateway.env
+  if [ ! -f /opt/spaces/operations.env ]; then
+    install -m 0600 /dev/null /opt/spaces/operations.env
+    grep -E '^(SUPABASE_URL|SUPABASE_SERVICE_ROLE_KEY)=' /opt/spaces/provisioner.env >> /opt/spaces/operations.env
+    printf 'SPACES_BACKUP_ENCRYPTION_KEY=%s\n' "$(openssl rand -hex 32)" >> /opt/spaces/operations.env
+    printf '%s\n' \
+      'SUPABASE_DB_HOST=aws-0-eu-west-3.pooler.supabase.com' \
+      'SUPABASE_DB_PORT=5432' \
+      'SUPABASE_DB_USER=postgres.fnrzqmecumyagcajivsu' \
+      'SUPABASE_DB_NAME=postgres' \
+      'BACKUP_DIRECTORY=/opt/spaces/backups' \
+      'BACKUP_RETENTION_DAYS=14' \
+      'ALERT_EMAIL=digitalcluster25@gmail.com' \
+      'ALERT_FROM=no-reply@spaces.community' \
+      'ALERT_SENDER_NAME=Spaces Operations' >> /opt/spaces/operations.env
+  fi
   install -m 0644 infrastructure/spaces-site/docker-compose.yml /opt/spaces/docker-compose.yml
   install -m 0644 infrastructure/spaces-site/nginx.conf /opt/spaces/nginx.conf
   docker compose -f /opt/spaces/docker-compose.yml up -d --force-recreate
 fi
+
+install -m 0644 infrastructure/operations/spaces-monitor.service /etc/systemd/system/spaces-monitor.service
+install -m 0644 infrastructure/operations/spaces-monitor.timer /etc/systemd/system/spaces-monitor.timer
+install -m 0644 infrastructure/operations/spaces-backup.service /etc/systemd/system/spaces-backup.service
+install -m 0644 infrastructure/operations/spaces-backup.timer /etc/systemd/system/spaces-backup.timer
+systemctl daemon-reload
+systemctl enable --now spaces-monitor.timer spaces-backup.timer >/dev/null
 
 install -m 0755 scripts/deploy.sh /opt/spaces/bin/deploy.sh
 

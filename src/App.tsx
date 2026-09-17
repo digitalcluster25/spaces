@@ -48,6 +48,7 @@ import {
   adminSetSubscription,
   adminUpdatePlanBilling,
   adminUpdatePlanLimit,
+  adminUpdateRateLimitPolicy,
   archiveProject,
   authReady,
   createProject,
@@ -63,6 +64,7 @@ import {
   listProjectSecrets,
   loadAdminData,
   previewHarnessUserConfig,
+  recordSecuritySessionEvent,
   restoreProject,
   removeProjectMember,
   rollbackHarnessUserConfig,
@@ -106,13 +108,22 @@ function useSession() {
 
   React.useEffect(() => {
     if (!supabase) return;
+    const record = (nextSession: Session | null) => {
+      if (!nextSession) return;
+      const key = `spaces-session-audit:${nextSession.user.id}:${nextSession.expires_at || "session"}`;
+      if (window.sessionStorage.getItem(key)) return;
+      window.sessionStorage.setItem(key, "1");
+      void recordSecuritySessionEvent("sign_in").catch(() => window.sessionStorage.removeItem(key));
+    };
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session);
       setLoading(false);
+      record(data.session);
     });
     const { data } = supabase.auth.onAuthStateChange((_event, nextSession) => {
       setSession(nextSession);
       setLoading(false);
+      record(nextSession);
     });
     return () => data.subscription.unsubscribe();
   }, []);
@@ -348,6 +359,7 @@ function MfaSetup({ onVerified }: { onVerified: () => void }) {
     const { error } = await supabase.auth.mfa.challengeAndVerify({ factorId, code });
     setWorking(false);
     if (error) return setMessage(error.message);
+    await recordSecuritySessionEvent("mfa_verified").catch(() => {});
     onVerified();
   }
 
@@ -609,7 +621,7 @@ function StatePage({ title, text, action, loading }: { title: string; text: stri
   return <section className="statePage">{loading && <LoaderCircle className="spin" size={22} />}<h1>{title}</h1><p>{text}</p>{action}</section>;
 }
 
-type AdminTab = "overview" | "accounts" | "plans" | "services" | "harness" | "jobs" | "audit";
+type AdminTab = "overview" | "accounts" | "plans" | "services" | "harness" | "jobs" | "operations" | "audit";
 
 function SuperadminPage({ session, workspace }: { session: Session | null; workspace: Workspace | null }) {
   const [data, setData] = React.useState<AdminData | null>(null);
@@ -664,6 +676,7 @@ function SuperadminPage({ session, workspace }: { session: Session | null; works
     ["services", "Сервисы", <ServerCog size={15} />],
     ["harness", "Harness", <Settings2 size={15} />],
     ["jobs", "Provisioning", <LoaderCircle size={15} />],
+    ["operations", "Операции", <Activity size={15} />],
     ["audit", "Аудит", <ShieldCheck size={15} />],
   ];
 
@@ -678,6 +691,7 @@ function SuperadminPage({ session, workspace }: { session: Session | null; works
       {tab === "services" && <ServicesAdmin data={data} confirm={(text, action) => setConfirmation({ text, action })} />}
       {tab === "harness" && <HarnessAdmin data={data} confirm={(text, action) => setConfirmation({ text, action })} />}
       {tab === "jobs" && <JobsAdmin data={data} confirm={(text, action) => setConfirmation({ text, action })} />}
+      {tab === "operations" && <OperationsAdmin data={data} confirm={(text, action) => setConfirmation({ text, action })} />}
       {tab === "audit" && <AuditAdmin data={data} confirm={(text, action) => setConfirmation({ text, action })} />}
       {confirmation && <ConfirmDialog title="Ты уверен, босс?" text={confirmation.text} confirm="Подтвердить" working={working} onClose={() => setConfirmation(null)} onConfirm={() => void runConfirmed()} />}
     </section>
@@ -796,13 +810,39 @@ function JobsAdmin({ data, confirm }: { data: AdminData; confirm: (text: string,
   return <div className="dataList">{data.jobs.length ? data.jobs.map((job) => <article className="adminRow" key={job.id}><div><strong>{job.operation}</strong><p>{job.project_service_id}</p><span className={"status status-" + (job.status === "completed" ? "ready" : job.status === "failed" ? "error" : "disabled")}>{job.status}</span>{job.last_error && <small className="fieldError">{job.last_error}</small>}</div>{job.status === "failed" && <button className="button buttonOutline" onClick={() => confirm("Повторно поставить операцию " + job.operation + " в очередь.", () => adminRetryJob(job.id))}>Повторить</button>}</article>) : <div className="emptyState">Очередь provisioning пуста.</div>}</div>;
 }
 
+function OperationsAdmin({ data, confirm }: { data: AdminData; confirm: (text: string, action: () => Promise<void>) => void }) {
+  const healthy = data.operationalStates.filter((item) => item.status === "healthy").length;
+  const latestBackup = data.backupRuns[0];
+  const latestDrill = data.restoreDrills[0];
+  return <div className="operationsAdmin">
+    <div className="statGrid">
+      <div className="stat"><span>Сервисы</span><strong>{healthy} из {data.operationalStates.length}</strong></div>
+      <div className="stat"><span>Последняя копия</span><strong>{latestBackup?.status ?? "нет"}</strong></div>
+      <div className="stat"><span>Restore drill</span><strong>{latestDrill?.status ?? "нет"}</strong></div>
+      <div className="stat"><span>Активные лимиты</span><strong>{data.rateLimitPolicies.filter((item) => item.enabled).length}</strong></div>
+    </div>
+    <section className="adminSection"><div className="sectionHeader"><div><h2>Здоровье платформы</h2><p>Проверки выполняются на сервере каждые пять минут.</p></div></div><div className="dataList">{data.operationalStates.map((state) => <article className="adminRow" key={state.service}><div><strong>{state.service}</strong><p>Проверено {new Date(state.last_checked_at).toLocaleString("ru")}</p></div><span className={`status status-${state.status === "healthy" ? "ready" : state.status === "down" ? "error" : "disabled"}`}>{state.status}</span></article>)}</div></section>
+    <section className="adminSection"><div className="sectionHeader"><div><h2>Резервные копии</h2><p>Архивы зашифрованы AES-256-GCM; восстановление проверяется без изменения production.</p></div></div><div className="tableWrap"><table className="dataTable"><thead><tr><th>Начало</th><th>Статус</th><th>Размер</th><th>Объекты</th><th>Restore</th></tr></thead><tbody>{data.backupRuns.slice(0, 20).map((run) => <tr key={run.id}><td>{new Date(run.started_at).toLocaleString("ru")}</td><td>{run.status}</td><td>{run.size_bytes === null ? "—" : bytesLabel(run.size_bytes, null)}</td><td>{run.object_count ?? "—"}</td><td>{data.restoreDrills.find((drill) => drill.backup_run_id === run.id)?.status ?? "—"}</td></tr>)}</tbody></table></div>{!data.backupRuns.length && <div className="emptyState">Проверенная резервная копия ещё не создана.</div>}</section>
+    <section className="adminSection"><div className="sectionHeader"><div><h2>Ограничения запросов</h2><p>Правила применяются атомарно для IP, ключа, проекта и аккаунта.</p></div></div><div className="dataList">{data.rateLimitPolicies.map((policy) => <RateLimitAdminRow key={policy.id} policy={policy} confirm={confirm} />)}</div></section>
+  </div>;
+}
+
+function RateLimitAdminRow({ policy, confirm }: { policy: AdminData["rateLimitPolicies"][number]; confirm: (text: string, action: () => Promise<void>) => void }) {
+  const [requests, setRequests] = React.useState(policy.requests);
+  const [windowSeconds, setWindowSeconds] = React.useState(policy.window_seconds);
+  const [enabled, setEnabled] = React.useState(policy.enabled);
+  return <article className="adminRow rateLimitRow"><div><strong>{policy.service} · {policy.dimension}</strong><p>{policy.description}</p></div><label>Запросов<input type="number" min={1} max={1000000} value={requests} onChange={(event) => setRequests(Number(event.target.value))} /></label><label>Период, сек<input type="number" min={1} max={86400} value={windowSeconds} onChange={(event) => setWindowSeconds(Number(event.target.value))} /></label><label className="flagRow"><input type="checkbox" checked={enabled} onChange={(event) => setEnabled(event.target.checked)} /><span>Включено</span></label><button className="button buttonOutline" onClick={() => confirm(`Изменить лимит ${policy.service}/${policy.dimension} на ${requests} запросов за ${windowSeconds} секунд.`, () => adminUpdateRateLimitPolicy(policy.id, requests, windowSeconds, enabled))}>Сохранить</button></article>;
+}
+
 function AuditAdmin({ data, confirm }: { data: AdminData; confirm: (text: string, action: () => Promise<void>) => void }) {
   const now = new Date();
   const weekAgo = new Date(now.getTime() - 7 * 86_400_000);
   const localValue = (date: Date) => new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
   const [start, setStart] = React.useState(localValue(weekAgo));
   const [end, setEnd] = React.useState(localValue(now));
-  return <div className="auditSection"><div className="auditToolbar"><label>С<input type="datetime-local" value={start} onChange={(event) => setStart(event.target.value)} /></label><label>По<input type="datetime-local" value={end} onChange={(event) => setEnd(event.target.value)} /></label><button className="button buttonDanger" disabled={!start || !end || start >= end} onClick={() => confirm(`Безвозвратно удалить события аудита с ${new Date(start).toLocaleString("ru")} по ${new Date(end).toLocaleString("ru")}. Контрольный хеш останется в истории удаления.`, () => adminDeleteAuditPeriod(new Date(start).toISOString(), new Date(end).toISOString()))}>Удалить период</button></div><div className="tableWrap"><table className="dataTable"><thead><tr><th>Время</th><th>Действие</th><th>Проект</th><th>Объект</th></tr></thead><tbody>{data.audit.map((event) => <tr key={event.id}><td>{new Date(event.created_at).toLocaleString("ru")}</td><td><code>{event.action}</code></td><td>{event.project_id ?? "—"}</td><td>{event.target_type ? event.target_type + ": " + event.target_id : "—"}</td></tr>)}</tbody></table></div>{data.auditMeta.length > 0 && <div className="auditMeta"><h2>История удаления</h2>{data.auditMeta.map((event) => <p key={event.id}>{new Date(event.created_at).toLocaleString("ru")}: удалено {event.deleted_count}, контрольный хеш <code>{event.digest.slice(0, 12)}…</code></p>)}</div>}</div>;
+  const [query, setQuery] = React.useState("");
+  const filtered = data.audit.filter((event) => `${event.action} ${event.project_id || ""} ${event.target_type || ""} ${event.target_id || ""}`.toLowerCase().includes(query.trim().toLowerCase()));
+  return <div className="auditSection"><div className="auditToolbar"><label className="auditSearch">Поиск<input value={query} placeholder="Действие, проект или объект" onChange={(event) => setQuery(event.target.value)} /></label><label>С<input type="datetime-local" value={start} onChange={(event) => setStart(event.target.value)} /></label><label>По<input type="datetime-local" value={end} onChange={(event) => setEnd(event.target.value)} /></label><button className="button buttonDanger" disabled={!start || !end || start >= end} onClick={() => confirm(`Безвозвратно удалить события аудита с ${new Date(start).toLocaleString("ru")} по ${new Date(end).toLocaleString("ru")}. Контрольный хеш останется в истории удаления.`, () => adminDeleteAuditPeriod(new Date(start).toISOString(), new Date(end).toISOString()))}>Удалить период</button></div><div className="tableWrap"><table className="dataTable"><thead><tr><th>Время</th><th>Действие</th><th>Проект</th><th>Объект</th></tr></thead><tbody>{filtered.map((event) => <tr key={event.id}><td>{new Date(event.created_at).toLocaleString("ru")}</td><td><code>{event.action}</code></td><td>{event.project_id ?? "—"}</td><td>{event.target_type ? event.target_type + ": " + event.target_id : "—"}</td></tr>)}</tbody></table></div>{data.auditMeta.length > 0 && <div className="auditMeta"><h2>История удаления</h2>{data.auditMeta.map((event) => <p key={event.id}>{new Date(event.created_at).toLocaleString("ru")}: удалено {event.deleted_count}, контрольный хеш <code>{event.digest.slice(0, 12)}…</code></p>)}</div>}</div>;
 }
 
 function ProjectDashboard({ session, workspace, refresh }: { session: Session; workspace: Workspace; refresh: () => Promise<void> }) {

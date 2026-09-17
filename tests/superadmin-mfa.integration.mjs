@@ -31,6 +31,14 @@ async function createUser(email) {
   return data.user;
 }
 
+async function ensureSuperadmin() {
+  const listed = requireData(await service.auth.admin.listUsers({ page: 1, perPage: 1000 }), "list users");
+  const existing = listed.users.find((user) => user.email?.toLowerCase() === superadminEmail);
+  if (!existing) return requireData(await service.auth.admin.createUser({ email: superadminEmail, password, email_confirm: true }), "create superadmin").user;
+  requireData(await service.auth.admin.updateUserById(existing.id, { password, email_confirm: true }), "update superadmin password");
+  return existing;
+}
+
 async function signIn(email) {
   const client = userClient();
   requireData(await client.auth.signInWithPassword({ email, password }), `sign in ${email}`);
@@ -38,8 +46,7 @@ async function signIn(email) {
 }
 
 try {
-  const superadmin = await createUser(superadminEmail);
-  requireData(await service.from("profiles").update({ is_superadmin: true }).eq("id", superadmin.id), "mark superadmin");
+  const superadmin = await ensureSuperadmin();
   const superadminAccount = requireData(await service.from("account_memberships").select("account_id").eq("user_id", superadmin.id).eq("role", "owner").single(), "load superadmin account");
   const superadminClient = await signIn(superadminEmail);
 

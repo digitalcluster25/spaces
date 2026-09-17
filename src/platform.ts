@@ -310,6 +310,61 @@ export type AuditMetaEvent = {
   created_at: string;
 };
 
+export type RateLimitPolicy = {
+  id: string;
+  service: "mcp" | "data" | "public_api";
+  dimension: "ip" | "credential" | "project" | "account";
+  requests: number;
+  window_seconds: number;
+  enabled: boolean;
+  description: string | null;
+  updated_at: string;
+};
+
+export type OperationalState = {
+  service: string;
+  status: "healthy" | "degraded" | "down" | "unconfigured";
+  consecutive_failures: number;
+  last_checked_at: string;
+  last_changed_at: string;
+  last_alerted_at: string | null;
+};
+
+export type OperationalCheck = {
+  id: number;
+  service: string;
+  status: OperationalState["status"];
+  latency_ms: number | null;
+  details: Record<string, unknown>;
+  checked_at: string;
+};
+
+export type BackupRun = {
+  id: string;
+  kind: string;
+  status: "running" | "completed" | "failed";
+  archive_name: string | null;
+  archive_sha256: string | null;
+  size_bytes: number | null;
+  database_bytes: number | null;
+  object_count: number | null;
+  revision: string | null;
+  error_code: string | null;
+  details: Record<string, unknown>;
+  started_at: string;
+  completed_at: string | null;
+};
+
+export type RestoreDrill = {
+  id: string;
+  backup_run_id: string;
+  status: "running" | "passed" | "failed";
+  checks: Record<string, unknown>;
+  error_code: string | null;
+  started_at: string;
+  completed_at: string | null;
+};
+
 export type AdminData = {
   profiles: Profile[];
   accounts: Account[];
@@ -323,6 +378,11 @@ export type AdminData = {
   audit: AuditEvent[];
   auditMeta: AuditMetaEvent[];
   harnessVersions: HarnessVersion[];
+  rateLimitPolicies: RateLimitPolicy[];
+  operationalStates: OperationalState[];
+  operationalChecks: OperationalCheck[];
+  backupRuns: BackupRun[];
+  restoreDrills: RestoreDrill[];
 };
 
 function requireClient() {
@@ -420,6 +480,11 @@ export async function loadWorkspace(session: Session): Promise<Workspace> {
     plans: (plansResult.data ?? []) as Plan[],
     subscription: subscriptionResult.data as Subscription | null,
   };
+}
+
+export async function recordSecuritySessionEvent(event: "sign_in" | "mfa_verified" | "sign_out") {
+  const { error } = await requireClient().rpc("record_security_session_event", { p_event: event });
+  if (error) throw error;
 }
 
 export function setActiveProjectForTab(accountId: string, projectId: string) {
@@ -577,6 +642,11 @@ export async function loadAdminData(): Promise<AdminData> {
     client.from("audit_events").select("*").order("created_at", { ascending: false }).limit(200),
     client.from("audit_meta_events").select("*").order("created_at", { ascending: false }).limit(100),
     client.from("harness_versions").select("*").order("version", { ascending: false }),
+    client.from("rate_limit_policies").select("*").order("service").order("dimension"),
+    client.from("operational_service_states").select("*").order("service"),
+    client.from("operational_checks").select("*").order("checked_at", { ascending: false }).limit(200),
+    client.from("backup_runs").select("*").order("started_at", { ascending: false }).limit(100),
+    client.from("restore_drills").select("*").order("started_at", { ascending: false }).limit(100),
   ]);
   const failed = results.find((result) => result.error);
   if (failed?.error) throw failed.error;
@@ -593,7 +663,22 @@ export async function loadAdminData(): Promise<AdminData> {
     audit: (results[9].data ?? []) as AuditEvent[],
     auditMeta: (results[10].data ?? []) as AuditMetaEvent[],
     harnessVersions: (results[11].data ?? []) as HarnessVersion[],
+    rateLimitPolicies: (results[12].data ?? []) as RateLimitPolicy[],
+    operationalStates: (results[13].data ?? []) as OperationalState[],
+    operationalChecks: (results[14].data ?? []) as OperationalCheck[],
+    backupRuns: (results[15].data ?? []) as BackupRun[],
+    restoreDrills: (results[16].data ?? []) as RestoreDrill[],
   };
+}
+
+export async function adminUpdateRateLimitPolicy(policyId: string, requests: number, windowSeconds: number, enabled: boolean) {
+  const { error } = await requireClient().rpc("admin_update_rate_limit_policy", {
+    p_policy_id: policyId,
+    p_requests: requests,
+    p_window_seconds: windowSeconds,
+    p_enabled: enabled,
+  });
+  if (error) throw error;
 }
 
 export async function adminUpdatePlanLimit(planCode: string, limit: Omit<PlanLimit, "plan_id">) {

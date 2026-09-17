@@ -335,6 +335,17 @@ export function createGateway({ fetchImpl = fetch, now = () => Date.now(), rateL
     if (count > rateLimit) throw Object.assign(new Error("Rate limit exceeded"), { status: 429, code: -32029 });
   }
 
+  async function enforceDistributedRateLimit(context, request) {
+    if (process.env.MCP_DISTRIBUTED_RATE_LIMIT !== "true") return enforceRateLimit(context);
+    const forwarded = String(request.headers["x-forwarded-for"] || "").split(",")[0].trim();
+    const result = await post(
+      `${process.env.SUPABASE_URL}/rest/v1/rpc/consume_mcp_rate_limit`,
+      { apikey: process.env.SUPABASE_ANON_KEY, "content-type": "application/json" },
+      { p_credential_id: context.credential_id, p_ip: forwarded, p_gateway_secret: process.env.MCP_GATEWAY_SECRET },
+    );
+    if (!result?.allowed) throw Object.assign(new Error("Rate limit exceeded"), { status: 429, code: -32029, retryAfter: result?.retry_after || 1 });
+  }
+
   async function audit(context, tool, success, startedAt, errorCode = null) {
     await post(
       `${process.env.SUPABASE_URL}/rest/v1/rpc/record_mcp_gateway_call`,
@@ -455,7 +466,7 @@ export function createGateway({ fetchImpl = fetch, now = () => Date.now(), rateL
       message = await readJson(request);
       assertInput(message?.jsonrpc === "2.0" && typeof message?.method === "string", "Invalid JSON-RPC request");
       const context = await authorize(token);
-      enforceRateLimit(context);
+      await enforceDistributedRateLimit(context, request);
 
       if (message.method === "initialize") {
         return json(response, 200, rpcResult(message.id, {

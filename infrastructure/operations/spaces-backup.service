@@ -1,0 +1,19 @@
+[Unit]
+Description=Create and verify encrypted Spaces backup
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+EnvironmentFile=/opt/spaces/operations.env
+UMask=0077
+ExecStart=/usr/bin/node /opt/spaces/repo/infrastructure/operations/backup.mjs
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full
+ReadWritePaths=/opt/spaces/backups
