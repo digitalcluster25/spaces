@@ -42,6 +42,7 @@ if [ ! -f /opt/spaces/operations.env ]; then
     'ALERT_FROM=no-reply@spaces.community' \
     'ALERT_SENDER_NAME=Spaces Operations' >> /opt/spaces/operations.env
 fi
+install -d -m 0700 /opt/spaces/backups
 
 if [ "$deployed" != "$remote" ] || [ ! -f "$site_dir/index.html" ]; then
   git reset --hard origin/main

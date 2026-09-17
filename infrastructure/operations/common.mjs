@@ -11,6 +11,10 @@ export function safeCode(error) {
   if (/timeout|abort/i.test(raw)) return "timeout";
   if (/ENOSPC/i.test(raw)) return "disk_full";
   if (/pg_dump/i.test(raw)) return "database_dump_failed";
+  if (/pg_restore/i.test(raw)) return "database_restore_verification_failed";
+  if (/critical table/i.test(raw)) return "critical_table_verification_failed";
+  if (/authenticate|decrypt/i.test(raw)) return "archive_authentication_failed";
+  if (/checksum/i.test(raw)) return "storage_checksum_failed";
   if (/storage/i.test(raw)) return "storage_backup_failed";
   return "operation_failed";
 }

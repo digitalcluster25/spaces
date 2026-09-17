@@ -36,5 +36,7 @@ test("monitor classifies slow and unavailable dependencies", () => {
 
 test("operational failures expose stable codes instead of secret-bearing messages", () => {
   assert.equal(safeCode(new Error("pg_dump failed for postgresql://secret")), "database_dump_failed");
+  assert.equal(safeCode(new Error("pg_restore failed with credentials")), "database_restore_verification_failed");
+  assert.equal(safeCode(new Error("Critical table extraction failed")), "critical_table_verification_failed");
   assert.equal(safeCode(new Error("request timeout with token secret")), "timeout");
 });

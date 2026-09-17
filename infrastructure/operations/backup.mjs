@@ -106,7 +106,7 @@ async function verifyBackup(archive, runId) {
     await decryptFile(archive, tarFile);
     await exec("tar", ["-xf", tarFile, "-C", extracted], { timeout: 120_000 });
     await exec("docker", ["run", "--rm", "-v", `${extracted}:/work:ro`, "postgres:17-alpine", "pg_restore", "--list", "/work/database.dump"], { timeout: 120_000 });
-    const { stdout } = await exec("docker", ["run", "--rm", "-v", `${extracted}:/work`, "postgres:17-alpine", "pg_restore", "--data-only", "--table=public.accounts", "--table=public.projects", "--table=public.project_memberships", "--file=/work/critical.sql", "/work/database.dump"], { timeout: 120_000 });
+    const { stdout } = await exec("docker", ["run", "--rm", "-v", `${extracted}:/work`, "postgres:17-alpine", "pg_restore", "--data-only", "--table=accounts", "--table=projects", "--table=project_memberships", "--file=/work/critical.sql", "/work/database.dump"], { timeout: 120_000 });
     void stdout;
     const critical = await readFile(join(extracted, "critical.sql"), "utf8");
     if (!critical.includes("COPY public.projects")) throw new Error("Critical table extraction failed");
