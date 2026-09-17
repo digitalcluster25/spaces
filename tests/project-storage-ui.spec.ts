@@ -85,4 +85,17 @@ test.describe("Project data owner workflow", () => {
     await page.getByRole("alertdialog").getByRole("button", { name: "Подтвердить" }).click();
     await expect(panel.getByText("ui-private.txt")).toHaveCount(0);
   });
+
+  test("shows a stable error when the secrets service returns an empty response", async ({ page }) => {
+    await page.route("**/api/data/secrets?**", async (route) => {
+      await route.fulfill({ status: 200, contentType: "application/json", body: "" });
+    });
+    await page.goto("/login");
+    await page.getByLabel("Email").fill(email);
+    await page.getByLabel("Пароль").fill(password);
+    await page.getByRole("button", { name: "Войти" }).click();
+    await expect(page).toHaveURL(/\/account/);
+    await expect(page.locator("#project-data")).toContainText("Сервис данных вернул пустой ответ");
+    await expect(page.getByText(/Cannot read properties/)).toHaveCount(0);
+  });
 });

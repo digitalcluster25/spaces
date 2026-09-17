@@ -805,6 +805,7 @@ async function dataPlane<T>(session: Session, path: string, options: RequestInit
   });
   const data = await response.json().catch(() => null);
   if (!response.ok) throw new Error(data?.error || "Сервис данных недоступен");
+  if (data === null) throw new Error("Сервис данных вернул пустой ответ");
   return data as T;
 }
 
