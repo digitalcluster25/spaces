@@ -26,6 +26,12 @@ if [ "$deployed" != "$remote" ] || [ ! -f "$site_dir/index.html" ]; then
   fi
   npm run build
   rsync -a --delete dist/ "$site_dir/"
+  if [ ! -f /opt/spaces/data-plane.env ]; then
+    install -m 0600 /dev/null /opt/spaces/data-plane.env
+    grep -E '^(SUPABASE_URL|SUPABASE_SERVICE_ROLE_KEY)=' /opt/spaces/provisioner.env >> /opt/spaces/data-plane.env
+    printf 'SPACES_DATA_ENCRYPTION_KEY=%s\n' "$(openssl rand -hex 32)" >> /opt/spaces/data-plane.env
+    printf 'DATA_PLANE_INTERNAL_SECRET=%s\n' "$(openssl rand -hex 32)" >> /opt/spaces/data-plane.env
+  fi
   install -m 0644 infrastructure/spaces-site/docker-compose.yml /opt/spaces/docker-compose.yml
   install -m 0644 infrastructure/spaces-site/nginx.conf /opt/spaces/nginx.conf
   docker compose -f /opt/spaces/docker-compose.yml up -d --force-recreate

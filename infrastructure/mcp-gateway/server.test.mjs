@@ -39,6 +39,8 @@ function mockFetch(scopes, calls = []) {
     calls.push({ url: String(url), body, headers: init.headers });
     if (String(url).includes("exchange_mcp_gateway_credential")) return response(200, context(scopes));
     if (String(url).includes("record_mcp_gateway_call")) return response(200, null);
+    if (String(url).includes("mcp_search_project_knowledge")) return response(200, [{ id: "knowledge-1", title: "Private" }]);
+    if (String(url).includes("mcp_upsert_project_knowledge")) return response(200, { id: "knowledge-1", project_id: "project-fixed-by-server" });
     if (String(url).includes("outline.test")) return response(200, { projectId: body.projectId, operation: body.operation });
     if (String(url).includes("openseo.test")) return response(200, { jsonrpc: "2.0", id: 1, result: { tools: [{ name: "rank" }] } });
     return response(404, { error: "not found" });
@@ -96,6 +98,26 @@ test("read-only credentials cannot write memory", async () => {
     const data = await result.json();
     assert.equal(data.result.isError, true);
     assert.equal(calls.some((call) => call.url.includes("outline.test")), false);
+  });
+});
+
+test("knowledge tools use the credential context and enforce read/write scopes", async () => {
+  const calls = [];
+  await withServer(mockFetch(["knowledge:read", "knowledge:write"], calls), async (base) => {
+    const listed = await rpc(base, { method: "tools/list" });
+    const names = (await listed.json()).result.tools.map((tool) => tool.name);
+    assert.deepEqual(names, ["knowledge.search", "knowledge.upsert"]);
+    const saved = await rpc(base, { method: "tools/call", params: { name: "knowledge.upsert", arguments: { title: "Private", content: "Tenant content", projectId: "spoofed" } } });
+    assert.equal(saved.status, 200);
+    const upstream = calls.find((call) => call.url.includes("mcp_upsert_project_knowledge"));
+    assert.equal(upstream.body.p_credential_id, "credential-1");
+    assert.equal("projectId" in upstream.body, false);
+  });
+
+  await withServer(mockFetch(["knowledge:read"]), async (base) => {
+    const result = await rpc(base, { method: "tools/call", params: { name: "knowledge.upsert", arguments: { title: "No", content: "Denied" } } });
+    const data = await result.json();
+    assert.equal(data.result.isError, true);
   });
 });
 

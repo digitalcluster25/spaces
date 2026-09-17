@@ -7,4 +7,12 @@ const revision = process.env.SPACES_GIT_REVISION || execFileSync("git", ["rev-pa
 export default defineConfig({
   plugins: [react()],
   define: { __APP_REVISION__: JSON.stringify(revision) },
+  preview: {
+    proxy: {
+      "/api/data": {
+        target: "http://127.0.0.1:4300",
+        rewrite: (path) => path.replace(/^\/api\/data/, ""),
+      },
+    },
+  },
 });

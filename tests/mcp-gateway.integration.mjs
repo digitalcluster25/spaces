@@ -79,7 +79,7 @@ try {
   const credential = requireData(await owner.rpc("create_mcp_credential", {
     p_project_id: projectIds[0],
     p_name: "Integration agent",
-    p_scopes: ["memory:read", "memory:write", "openseo:*"],
+    p_scopes: ["memory:read", "memory:write", "knowledge:read", "knowledge:write", "openseo:*"],
     p_expires_at: new Date(Date.now() + 60_000).toISOString(),
   }), "create MCP credential");
   assert.match(credential.token, /^spc_[a-f0-9]{64}$/);
@@ -90,7 +90,30 @@ try {
   }), "exchange MCP credential");
   assert.equal(exchanged.project_id, projectIds[0]);
   assert.notEqual(exchanged.project_id, projectIds[1]);
-  assert.deepEqual(exchanged.scopes.sort(), ["memory:read", "memory:write", "openseo:*"].sort());
+  assert.deepEqual(exchanged.scopes.sort(), ["memory:read", "memory:write", "knowledge:read", "knowledge:write", "openseo:*"].sort());
+
+  const knowledge = requireData(await service.rpc("mcp_upsert_project_knowledge", {
+    p_credential_id: credential.id,
+    p_document_id: null,
+    p_title: "Gateway memory",
+    p_content: "Private memory fixed to the credential project",
+    p_source_type: "agent",
+    p_source_id: "integration",
+    p_service_slug: "spaces",
+    p_metadata: { origin: "mcp" },
+    p_embedding: null,
+    p_embedding_model: null,
+    p_gateway_secret: gatewaySecret,
+  }), "save MCP knowledge");
+  assert.equal(knowledge.project_id, projectIds[0]);
+  const knowledgeMatches = requireData(await service.rpc("mcp_search_project_knowledge", {
+    p_credential_id: credential.id,
+    p_query: "credential project",
+    p_embedding: null,
+    p_limit: 5,
+    p_gateway_secret: gatewaySecret,
+  }), "search MCP knowledge");
+  assert.equal(knowledgeMatches[0].id, knowledge.id);
 
   requireData(await service.rpc("record_mcp_gateway_call", {
     p_credential_id: credential.id,

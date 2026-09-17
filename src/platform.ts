@@ -129,6 +129,57 @@ export type McpCredential = {
   created_at: string;
 };
 
+export type KnowledgeDocument = {
+  id: string;
+  project_id?: string;
+  title: string;
+  content: string;
+  service_slug: string;
+  source_type: "manual" | "file" | "service" | "agent" | "outline";
+  source_id: string | null;
+  metadata: Record<string, unknown>;
+  embedding_model: string | null;
+  score?: number;
+  created_at?: string;
+  updated_at: string;
+};
+
+export type ProjectFile = {
+  id: string;
+  project_id: string;
+  service_slug: string;
+  object_path: string;
+  file_name: string;
+  mime_type: string;
+  size_bytes: number;
+  sha256: string | null;
+  status: "uploading" | "active" | "deleted";
+  created_at: string;
+};
+
+export type ProjectSecret = {
+  id: string;
+  project_id: string;
+  name: string;
+  kind: "api_key" | "token" | "password" | "credential" | "custom";
+  service_slug: string | null;
+  description: string | null;
+  status: "active" | "disabled";
+  version: number;
+  rotated_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ProjectStorageSummary = {
+  file_bytes: number;
+  file_limit_bytes: number | null;
+  vector_bytes: number;
+  vector_limit_bytes: number | null;
+  secret_count: number;
+  secret_limit: number | null;
+};
+
 export type ProjectMember = {
   user_id: string;
   role: "owner" | "member";
@@ -640,4 +691,146 @@ export async function adminPublishHarness(adminConfig: Record<string, unknown>, 
     p_git_revision: gitRevision || null,
   });
   if (error) throw error;
+}
+
+export async function loadProjectStorage(projectId: string) {
+  const client = requireClient();
+  const [knowledge, files, summary] = await Promise.all([
+    client.from("project_knowledge_documents")
+      .select("id,project_id,title,content,service_slug,source_type,source_id,metadata,embedding_model,created_at,updated_at")
+      .eq("project_id", projectId)
+      .order("updated_at", { ascending: false })
+      .limit(100),
+    client.from("project_files")
+      .select("id,project_id,service_slug,object_path,file_name,mime_type,size_bytes,sha256,status,created_at")
+      .eq("project_id", projectId)
+      .eq("status", "active")
+      .order("created_at", { ascending: false })
+      .limit(100),
+    client.rpc("project_storage_summary", { p_project_id: projectId }),
+  ]);
+  const error = knowledge.error || files.error || summary.error;
+  if (error) throw error;
+  return {
+    knowledge: (knowledge.data ?? []) as KnowledgeDocument[],
+    files: (files.data ?? []) as ProjectFile[],
+    summary: summary.data as ProjectStorageSummary,
+  };
+}
+
+export async function searchProjectKnowledge(projectId: string, query: string) {
+  const { data, error } = await requireClient().rpc("search_project_knowledge", {
+    p_project_id: projectId,
+    p_query: query,
+    p_embedding: null,
+    p_limit: 30,
+  });
+  if (error) throw error;
+  return (data ?? []) as KnowledgeDocument[];
+}
+
+export async function saveProjectKnowledge(projectId: string, title: string, content: string, documentId?: string) {
+  const { data, error } = await requireClient().rpc("upsert_project_knowledge", {
+    p_project_id: projectId,
+    p_id: documentId || null,
+    p_title: title,
+    p_content: content,
+    p_source_type: "manual",
+    p_source_id: null,
+    p_service_slug: "spaces",
+    p_metadata: {},
+    p_embedding: null,
+    p_embedding_model: null,
+  });
+  if (error) throw error;
+  return data as KnowledgeDocument;
+}
+
+export async function deleteProjectKnowledge(projectId: string, documentId: string) {
+  const { error } = await requireClient().rpc("delete_project_knowledge", { p_project_id: projectId, p_document_id: documentId });
+  if (error) throw error;
+}
+
+async function sha256(file: File) {
+  const digest = await crypto.subtle.digest("SHA-256", await file.arrayBuffer());
+  return Array.from(new Uint8Array(digest)).map((value) => value.toString(16).padStart(2, "0")).join("");
+}
+
+export async function uploadProjectFile(projectId: string, file: File) {
+  const client = requireClient();
+  const reserved = await client.rpc("reserve_project_file", {
+    p_project_id: projectId,
+    p_file_name: file.name,
+    p_mime_type: file.type || "application/octet-stream",
+    p_size_bytes: file.size,
+    p_service_slug: "spaces",
+  });
+  if (reserved.error) throw reserved.error;
+  const row = reserved.data as ProjectFile;
+  const uploaded = await client.storage.from("project-files").upload(row.object_path, file, { contentType: row.mime_type, upsert: false });
+  if (uploaded.error) {
+    await client.rpc("cancel_project_file", { p_file_id: row.id });
+    throw uploaded.error;
+  }
+  const completed = await client.rpc("complete_project_file", { p_file_id: row.id, p_sha256: await sha256(file) });
+  if (completed.error) {
+    await client.storage.from("project-files").remove([row.object_path]);
+    throw completed.error;
+  }
+  return completed.data as ProjectFile;
+}
+
+export async function openProjectFile(file: ProjectFile) {
+  const { data, error } = await requireClient().storage.from("project-files").createSignedUrl(file.object_path, 60);
+  if (error) throw error;
+  window.open(data.signedUrl, "_blank", "noopener,noreferrer");
+}
+
+export async function deleteProjectFile(file: ProjectFile) {
+  const client = requireClient();
+  const removed = await client.storage.from("project-files").remove([file.object_path]);
+  if (removed.error) throw removed.error;
+  const { error } = await client.rpc("delete_project_file", { p_file_id: file.id });
+  if (error) throw error;
+}
+
+async function dataPlane<T>(session: Session, path: string, options: RequestInit = {}) {
+  const response = await fetch(`/api/data${path}`, {
+    ...options,
+    headers: {
+      authorization: `Bearer ${session.access_token}`,
+      ...(options.body ? { "content-type": "application/json" } : {}),
+      ...options.headers,
+    },
+  });
+  const data = await response.json().catch(() => null);
+  if (!response.ok) throw new Error(data?.error || "Сервис данных недоступен");
+  return data as T;
+}
+
+export async function listProjectSecrets(session: Session, projectId: string) {
+  const data = await dataPlane<{ secrets: ProjectSecret[] }>(session, `/secrets?projectId=${encodeURIComponent(projectId)}`);
+  return data.secrets;
+}
+
+export async function saveProjectSecret(session: Session, input: {
+  projectId: string;
+  secretId?: string;
+  name: string;
+  kind: ProjectSecret["kind"];
+  serviceSlug?: string;
+  description?: string;
+  value: string;
+}) {
+  const data = await dataPlane<{ secret: ProjectSecret }>(session, "/secrets", { method: "POST", body: JSON.stringify(input) });
+  return data.secret;
+}
+
+export async function setProjectSecretStatus(session: Session, secretId: string, status: "active" | "disabled") {
+  const data = await dataPlane<{ secret: ProjectSecret }>(session, `/secrets/${secretId}`, { method: "PATCH", body: JSON.stringify({ status }) });
+  return data.secret;
+}
+
+export async function deleteProjectSecret(session: Session, secretId: string) {
+  await dataPlane(session, `/secrets/${secretId}`, { method: "DELETE" });
 }

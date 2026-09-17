@@ -13,6 +13,8 @@ import {
   Copy,
   CreditCard,
   ExternalLink,
+  FileText,
+  Files,
   Fingerprint,
   KeyRound,
   LoaderCircle,
@@ -22,10 +24,12 @@ import {
   Pencil,
   Plus,
   RotateCcw,
+  Search,
   Settings2,
   ShieldCheck,
   Sparkles,
   Trash2,
+  Upload,
   X,
   Activity,
   Database,
@@ -51,7 +55,12 @@ import {
   createMcpCredential,
   createServiceTicket,
   createProjectInvitation,
+  deleteProjectFile,
+  deleteProjectKnowledge,
+  deleteProjectSecret,
   loadWorkspace,
+  loadProjectStorage,
+  listProjectSecrets,
   loadAdminData,
   previewHarnessUserConfig,
   restoreProject,
@@ -60,16 +69,26 @@ import {
   revokeMcpCredential,
   revokeProjectInvitation,
   saveHarnessUserConfig,
+  saveProjectKnowledge,
+  saveProjectSecret,
+  searchProjectKnowledge,
   setActiveAccountForTab,
   setActiveProjectForTab,
   setServiceEnabled,
+  setProjectSecretStatus,
   supabase,
   updateProject,
+  uploadProjectFile,
+  openProjectFile,
   type Project,
   type AdminData,
   type PlanLimit,
   type HarnessPreview,
   type ProjectHarnessVersion,
+  type KnowledgeDocument,
+  type ProjectFile,
+  type ProjectSecret,
+  type ProjectStorageSummary,
   type Service,
   type Workspace,
 } from "./platform";
@@ -79,6 +98,7 @@ type AuthMode = "login" | "register" | "forgot";
 type HarnessView = "admin" | "user" | "effective" | "history";
 
 const harnessVersionsEnabled = import.meta.env.VITE_HARNESS_VERSIONS_ENABLED !== "false";
+const projectDataEnabled = import.meta.env.VITE_PROJECT_DATA_ENABLED !== "false";
 
 function useSession() {
   const [session, setSession] = React.useState<Session | null>(null);
@@ -997,10 +1017,174 @@ function ProjectWorkspace({ session, project, workspace, refresh }: { session: S
           );
         })}
       </div>
+      {projectDataEnabled && <ProjectDataPanel session={session} project={project} canManage={canManage} />}
       <MembersPanel project={project} workspace={workspace} refresh={refresh} />
       <McpPanel project={project} workspace={workspace} refresh={refresh} canManage={canManage} />
       <HarnessPanel project={project} workspace={workspace} refresh={refresh} canManage={canManage} />
     </div>
+  );
+}
+
+type DataView = "knowledge" | "files" | "secrets";
+
+function bytesLabel(value: number, limit: number | null) {
+  const used = value < 1024 * 1024 ? `${Math.max(1, Math.round(value / 1024))} КБ` : `${(value / 1024 / 1024).toFixed(1)} МБ`;
+  return limit === null ? used : `${used} из ${Math.round(limit / 1024 / 1024)} МБ`;
+}
+
+function ProjectDataPanel({ session, project, canManage }: { session: Session; project: Project; canManage: boolean }) {
+  const [view, setView] = React.useState<DataView>("knowledge");
+  const [knowledge, setKnowledge] = React.useState<KnowledgeDocument[]>([]);
+  const [files, setFiles] = React.useState<ProjectFile[]>([]);
+  const [secrets, setSecrets] = React.useState<ProjectSecret[]>([]);
+  const [summary, setSummary] = React.useState<ProjectStorageSummary | null>(null);
+  const [loading, setLoading] = React.useState(true);
+  const [working, setWorking] = React.useState(false);
+  const [message, setMessage] = React.useState("");
+  const [query, setQuery] = React.useState("");
+  const [title, setTitle] = React.useState("");
+  const [content, setContent] = React.useState("");
+  const [secretId, setSecretId] = React.useState<string | undefined>();
+  const [secretName, setSecretName] = React.useState("");
+  const [secretValue, setSecretValue] = React.useState("");
+  const [secretKind, setSecretKind] = React.useState<ProjectSecret["kind"]>("api_key");
+  const [secretService, setSecretService] = React.useState("");
+  const [secretDescription, setSecretDescription] = React.useState("");
+  const [confirmation, setConfirmation] = React.useState<{ text: string; action: () => Promise<void> } | null>(null);
+
+  const load = React.useCallback(async () => {
+    setLoading(true);
+    try {
+      const stored = await loadProjectStorage(project.id);
+      setKnowledge(stored.knowledge);
+      setFiles(stored.files);
+      setSummary(stored.summary);
+      setSecrets(canManage ? await listProjectSecrets(session, project.id) : []);
+    } catch (cause) {
+      setMessage(cause instanceof Error ? cause.message : "Не удалось загрузить хранилище");
+    } finally {
+      setLoading(false);
+    }
+  }, [canManage, project.id, session]);
+
+  React.useEffect(() => { void load(); }, [load]);
+
+  async function run(action: () => Promise<unknown>) {
+    setWorking(true);
+    setMessage("");
+    try {
+      await action();
+      await load();
+    } catch (cause) {
+      setMessage(cause instanceof Error ? cause.message : "Операция не выполнена");
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  async function saveKnowledge(event: React.FormEvent) {
+    event.preventDefault();
+    await run(async () => {
+      await saveProjectKnowledge(project.id, title, content);
+      setTitle("");
+      setContent("");
+      setMessage("Документ добавлен в память проекта.");
+    });
+  }
+
+  async function search(event: React.FormEvent) {
+    event.preventDefault();
+    setWorking(true);
+    setMessage("");
+    try {
+      if (!query.trim()) return await load();
+      setKnowledge(await searchProjectKnowledge(project.id, query));
+    } catch (cause) {
+      setMessage(cause instanceof Error ? cause.message : "Поиск не выполнен");
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  async function upload(file?: File) {
+    if (!file) return;
+    await run(async () => { await uploadProjectFile(project.id, file); });
+  }
+
+  function editSecret(secret: ProjectSecret) {
+    setSecretId(secret.id);
+    setSecretName(secret.name);
+    setSecretKind(secret.kind);
+    setSecretService(secret.service_slug || "");
+    setSecretDescription(secret.description || "");
+    setSecretValue("");
+  }
+
+  function resetSecretForm() {
+    setSecretId(undefined);
+    setSecretName("");
+    setSecretValue("");
+    setSecretKind("api_key");
+    setSecretService("");
+    setSecretDescription("");
+  }
+
+  async function saveSecret(event: React.FormEvent) {
+    event.preventDefault();
+    await run(async () => {
+      await saveProjectSecret(session, {
+        projectId: project.id,
+        secretId,
+        name: secretName,
+        kind: secretKind,
+        serviceSlug: secretService,
+        description: secretDescription,
+        value: secretValue,
+      });
+      resetSecretForm();
+      setMessage(secretId ? "Секрет заменён новой версией." : "Секрет сохранён.");
+    });
+  }
+
+  async function confirmAction() {
+    if (!confirmation) return;
+    const action = confirmation.action;
+    setConfirmation(null);
+    await run(action);
+  }
+
+  return (
+    <section className="dataPanel" id="project-data">
+      <div className="sectionHeader">
+        <div><span className="sectionKicker"><Database size={14} />project data</span><h2>Данные проекта</h2><p>Память, приватные файлы и секреты доступны только участникам активного проекта.</p></div>
+        {summary && <div className="storageStats"><span>Память <strong>{bytesLabel(summary.vector_bytes, summary.vector_limit_bytes)}</strong></span><span>Файлы <strong>{bytesLabel(summary.file_bytes, summary.file_limit_bytes)}</strong></span>{canManage && <span>Секреты <strong>{summary.secret_count}{summary.secret_limit === null ? "" : ` из ${summary.secret_limit}`}</strong></span>}</div>}
+      </div>
+      <div className="dataTabs" role="tablist">
+        <button className={view === "knowledge" ? "active" : ""} onClick={() => setView("knowledge")}><BrainCircuit size={15} />Память</button>
+        <button className={view === "files" ? "active" : ""} onClick={() => setView("files")}><Files size={15} />Файлы</button>
+        {canManage && <button className={view === "secrets" ? "active" : ""} onClick={() => setView("secrets")}><LockKeyhole size={15} />Секреты</button>}
+      </div>
+      {message && <div className={message.startsWith("Не удалось") || message.includes("недоступ") ? "notice errorNotice" : "notice"}>{message}</div>}
+      {loading ? <div className="dataLoading"><LoaderCircle className="spin" size={18} />Загружаем данные</div> : view === "knowledge" ? (
+        <div className="dataView">
+          <form className="knowledgeSearch" onSubmit={search}><label><Search size={15} /><input value={query} placeholder="Поиск по памяти проекта" onChange={(event) => setQuery(event.target.value)} /></label><button className="button buttonOutline" disabled={working}>Найти</button></form>
+          <form className="knowledgeCreate" onSubmit={saveKnowledge}><label>Название<input value={title} maxLength={240} required onChange={(event) => setTitle(event.target.value)} /></label><label>Содержание<textarea value={content} maxLength={200000} required rows={4} onChange={(event) => setContent(event.target.value)} /></label><button className="button buttonPrimary" disabled={working || !title.trim() || !content.trim()}>Добавить в память</button></form>
+          <div className="dataRows">{knowledge.map((document) => <article className="dataRow" key={document.id}><FileText size={18} /><div><strong>{document.title}</strong><p>{document.content}</p><small>{document.service_slug} · {document.embedding_model ? `vector: ${document.embedding_model}` : "полнотекстовый индекс"}{document.score !== undefined ? ` · релевантность ${Math.round(document.score * 100)}%` : ""}</small></div><button className="iconButton" title="Удалить документ" onClick={() => setConfirmation({ text: `Удалить «${document.title}» из памяти проекта?`, action: () => deleteProjectKnowledge(project.id, document.id) })}><Trash2 size={15} /></button></article>)}{!knowledge.length && <div className="emptyState">В памяти проекта пока нет документов.</div>}</div>
+        </div>
+      ) : view === "files" ? (
+        <div className="dataView">
+          <label className="fileUpload button buttonPrimary"><Upload size={15} />Загрузить файл<input type="file" disabled={working} accept=".txt,.md,.csv,.json,.pdf,.png,.jpg,.jpeg,.webp,.docx,.xlsx" onChange={(event) => { void upload(event.target.files?.[0]); event.currentTarget.value = ""; }} /></label>
+          <div className="dataRows">{files.map((file) => <article className="dataRow" key={file.id}><Files size={18} /><div><strong>{file.file_name}</strong><small>{file.mime_type} · {bytesLabel(file.size_bytes, null)}</small></div><button className="button buttonOutline" onClick={() => void openProjectFile(file)}>Открыть<ExternalLink size={14} /></button><button className="iconButton" title="Удалить файл" onClick={() => setConfirmation({ text: `Удалить файл «${file.file_name}»?`, action: () => deleteProjectFile(file) })}><Trash2 size={15} /></button></article>)}{!files.length && <div className="emptyState">В проект ещё не загружены файлы.</div>}</div>
+        </div>
+      ) : (
+        <div className="dataView">
+          <div className="secretRule"><ShieldCheck size={18} /><p>Значения шифруются на сервере и никогда не показываются повторно. Агенты видят только наличие секрета, а сервисы используют его внутри защищённого контура.</p></div>
+          <form className="secretCreate" onSubmit={saveSecret}><label>Имя<input value={secretName} placeholder="SERVICE_API_KEY" required onChange={(event) => setSecretName(event.target.value.toUpperCase())} /></label><label>Тип<select value={secretKind} onChange={(event) => setSecretKind(event.target.value as ProjectSecret["kind"])}><option value="api_key">API key</option><option value="token">Token</option><option value="password">Password</option><option value="credential">Credential</option><option value="custom">Custom</option></select></label><label>Сервис<input value={secretService} placeholder="openseo" onChange={(event) => setSecretService(event.target.value.toLowerCase())} /></label><label>Описание<input value={secretDescription} maxLength={500} onChange={(event) => setSecretDescription(event.target.value)} /></label><label className="secretValue">{secretId ? "Новое значение" : "Значение"}<input type="password" autoComplete="new-password" value={secretValue} required onChange={(event) => setSecretValue(event.target.value)} /></label><div className="secretFormActions"><button className="button buttonPrimary" disabled={working || !secretName || !secretValue}>{secretId ? "Заменить секрет" : "Сохранить секрет"}</button>{secretId && <button className="button buttonGhost" type="button" onClick={resetSecretForm}>Отмена</button>}</div></form>
+          <div className="dataRows">{secrets.map((secret) => <article className="dataRow" key={secret.id}><KeyRound size={18} /><div><div className="serviceName"><strong>{secret.name}</strong><span className={`status status-${secret.status === "active" ? "ready" : "disabled"}`}>{secret.status === "active" ? "Активен" : "Отключён"}</span></div><small>{secret.kind} · версия {secret.version}{secret.service_slug ? ` · ${secret.service_slug}` : ""}</small>{secret.description && <p>{secret.description}</p>}</div><button className="button buttonOutline" onClick={() => editSecret(secret)}>Заменить</button><button className="button buttonGhost" onClick={() => void run(() => setProjectSecretStatus(session, secret.id, secret.status === "active" ? "disabled" : "active"))}>{secret.status === "active" ? "Отключить" : "Включить"}</button><button className="iconButton" title="Удалить секрет" onClick={() => setConfirmation({ text: `Удалить секрет ${secret.name}? Восстановить его значение будет нельзя.`, action: () => deleteProjectSecret(session, secret.id) })}><Trash2 size={15} /></button></article>)}{!secrets.length && <div className="emptyState">У проекта пока нет секретов.</div>}</div>
+        </div>
+      )}
+      {confirmation && <ConfirmDialog title="Ты уверен, босс?" text={confirmation.text} confirm="Подтвердить" working={working} onClose={() => setConfirmation(null)} onConfirm={() => void confirmAction()} />}
+    </section>
   );
 }
 
@@ -1066,7 +1250,7 @@ function McpPanel({ project, workspace, refresh, canManage }: { project: Project
   const credentials = workspace.mcpCredentials.filter((credential) => credential.project_id === project.id);
   const [name, setName] = React.useState("");
   const [lifetime, setLifetime] = React.useState("90");
-  const [scopes, setScopes] = React.useState(["memory:read", "memory:write", "openseo:*"]);
+  const [scopes, setScopes] = React.useState(["memory:read", "memory:write", "knowledge:read", "knowledge:write", "openseo:*"]);
   const [revealed, setRevealed] = React.useState<{ token: string; name: string } | null>(null);
   const [revokeTarget, setRevokeTarget] = React.useState<string | null>(null);
   const [working, setWorking] = React.useState(false);
@@ -1113,9 +1297,11 @@ function McpPanel({ project, workspace, refresh, canManage }: { project: Project
     setScopes((current) => {
       if (current.includes(scope)) {
         if (scope === "memory:read") return current.filter((item) => item !== "memory:read" && item !== "memory:write");
+        if (scope === "knowledge:read") return current.filter((item) => item !== "knowledge:read" && item !== "knowledge:write");
         return current.filter((item) => item !== scope);
       }
       if (scope === "memory:write") return Array.from(new Set([...current, "memory:read", "memory:write"]));
+      if (scope === "knowledge:write") return Array.from(new Set([...current, "knowledge:read", "knowledge:write"]));
       return [...current, scope];
     });
   }
@@ -1131,7 +1317,7 @@ function McpPanel({ project, workspace, refresh, canManage }: { project: Project
       <div className="mcpCreate">
         <label>Название ключа<input value={name} maxLength={80} placeholder="Например, Codex на MacBook" onChange={(event) => setName(event.target.value)} /></label>
         <label>Срок действия<select value={lifetime} onChange={(event) => setLifetime(event.target.value)}><option value="30">30 дней</option><option value="90">90 дней</option><option value="365">1 год</option><option value="permanent">Без срока</option></select></label>
-        <fieldset className="scopePicker"><legend>Доступ</legend><label><input type="checkbox" checked={scopes.includes("memory:read")} onChange={() => toggleScope("memory:read")} />Память: чтение</label><label><input type="checkbox" checked={scopes.includes("memory:write")} onChange={() => toggleScope("memory:write")} />Память: запись</label><label><input type="checkbox" checked={scopes.includes("openseo:*")} onChange={() => toggleScope("openseo:*")} />OpenSEO</label></fieldset>
+        <fieldset className="scopePicker"><legend>Доступ</legend><label><input type="checkbox" checked={scopes.includes("memory:read")} onChange={() => toggleScope("memory:read")} />Outline: чтение</label><label><input type="checkbox" checked={scopes.includes("memory:write")} onChange={() => toggleScope("memory:write")} />Outline: запись</label><label><input type="checkbox" checked={scopes.includes("knowledge:read")} onChange={() => toggleScope("knowledge:read")} />Память проекта: чтение</label><label><input type="checkbox" checked={scopes.includes("knowledge:write")} onChange={() => toggleScope("knowledge:write")} />Память проекта: запись</label><label><input type="checkbox" checked={scopes.includes("openseo:*")} onChange={() => toggleScope("openseo:*")} />OpenSEO</label></fieldset>
         <button className="button buttonPrimary" type="button" disabled={working || !name.trim() || !scopes.length} onClick={() => void create()}>Создать ключ</button>
       </div>
       {revealed && <div className="secretReveal"><div><strong>{revealed.name}</strong><p>Сохраните ключ сейчас. После закрытия он больше не будет показан.</p></div><code>{revealed.token}</code><button className="button buttonOutline" type="button" onClick={() => void copy(revealed.token)}><Copy size={15} />Копировать</button><button className="iconButton" type="button" title="Скрыть ключ" onClick={() => setRevealed(null)}><X size={15} /></button></div>}

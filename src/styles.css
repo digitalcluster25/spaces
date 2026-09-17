@@ -235,7 +235,37 @@ code { padding: 3px 6px; border: 1px solid var(--border); border-radius: 4px; ba
 .switch input:disabled + span { cursor: not-allowed; opacity: .5; }
 .fieldError { display: block; margin-top: 5px; color: var(--danger); }
 
-.membersPanel, .mcpPanel, .harnessPanel { margin-top: 28px; padding-top: 28px; border-top: 1px solid var(--border); }
+.dataPanel, .membersPanel, .mcpPanel, .harnessPanel { margin-top: 28px; padding-top: 28px; border-top: 1px solid var(--border); }
+.storageStats { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+.storageStats span { display: grid; gap: 2px; min-width: 120px; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius); color: var(--muted-foreground); font-size: .6875rem; }
+.storageStats strong { color: var(--foreground); font-size: .75rem; }
+.dataTabs { display: flex; gap: 2px; width: fit-content; margin: 14px 0; padding: 3px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--muted); }
+.dataTabs button { display: inline-flex; align-items: center; gap: 6px; min-height: 34px; padding: 0 12px; border: 0; border-radius: 4px; background: transparent; color: var(--muted-foreground); font: inherit; font-size: .8125rem; font-weight: 600; cursor: pointer; }
+.dataTabs button.active { background: #fff; color: var(--foreground); box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+.dataLoading { display: flex; align-items: center; gap: 8px; min-height: 90px; color: var(--muted-foreground); font-size: .8125rem; }
+.dataView { display: grid; gap: 12px; }
+.knowledgeSearch { display: grid; grid-template-columns: minmax(220px,1fr) auto; gap: 8px; }
+.knowledgeSearch label { position: relative; }
+.knowledgeSearch svg { position: absolute; top: 12px; left: 11px; color: var(--muted-foreground); }
+.knowledgeSearch input { padding-left: 34px; }
+.knowledgeCreate, .secretCreate { display: grid; grid-template-columns: minmax(180px,.45fr) minmax(300px,1fr) auto; gap: 8px; align-items: end; padding: 12px; border: 1px solid var(--border); border-radius: var(--radius); }
+.knowledgeCreate label, .secretCreate label { display: grid; gap: 6px; font-size: .75rem; font-weight: 600; }
+.knowledgeCreate textarea { min-height: 76px; }
+.dataRows { display: grid; border: 1px solid var(--border); border-radius: var(--radius); }
+.dataRow { display: grid; grid-template-columns: 22px minmax(0,1fr) auto auto auto; gap: 10px; align-items: center; min-height: 62px; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+.dataRow:last-child { border-bottom: 0; }
+.dataRow > svg { color: var(--muted-foreground); }
+.dataRow > div { min-width: 0; }
+.dataRow p { display: -webkit-box; overflow: hidden; margin: 4px 0 0; color: var(--muted-foreground); font-size: .8125rem; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.dataRow small { display: block; margin-top: 4px; color: var(--muted-foreground); font-size: .6875rem; }
+.fileUpload { width: fit-content; }
+.fileUpload input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.secretRule { display: flex; align-items: flex-start; gap: 10px; padding: 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--muted); }
+.secretRule p { margin: 0; font-size: .8125rem; }
+.secretCreate { grid-template-columns: minmax(170px,.8fr) 130px 140px minmax(180px,1fr); }
+.secretCreate select { min-height: 40px; padding: 0 10px; border: 1px solid var(--input); border-radius: var(--radius); background: #fff; }
+.secretCreate .secretValue { grid-column: 1 / -1; }
+.secretFormActions { display: flex; gap: 8px; grid-column: 1 / -1; justify-content: flex-end; }
 .invitationInbox { display: grid; gap: 8px; margin-bottom: 18px; padding: 14px; border: 1px solid var(--foreground); border-radius: var(--radius); }
 .invitationInbox h2 { margin: 4px 0 0; }
 .incomingInvitation { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 12px; align-items: center; padding-top: 10px; border-top: 1px solid var(--border); }
@@ -380,6 +410,12 @@ legend { padding: 0 4px; font-size: .8125rem; font-weight: 600; }
   .harnessGroup.wide { grid-column: auto; }
   .flagGrid, .runtimeGrid { grid-template-columns: 1fr; }
   .mcpCreate, .secretReveal { grid-template-columns: 1fr; align-items: stretch; }
+  .storageStats { justify-content: flex-start; }
+  .knowledgeCreate, .secretCreate { grid-template-columns: 1fr; }
+  .secretCreate .secretValue, .secretFormActions { grid-column: auto; }
+  .dataRow { grid-template-columns: 22px minmax(0,1fr) auto; }
+  .dataRow > .button { grid-column: 2; justify-self: start; }
+  .dataRow > .iconButton { grid-column: 3; grid-row: 1; }
   .inviteForm { grid-template-columns: 1fr; }
   .secretReveal .iconButton { justify-self: end; }
   .qrBlock { grid-template-columns: 1fr; }
@@ -409,4 +445,7 @@ legend { padding: 0 4px; font-size: .8125rem; font-weight: 600; }
   .memberRow { grid-template-columns: 34px minmax(0,1fr) auto; }
   .memberRow > .badge { grid-column: 2; }
   .memberRow > .iconButton { grid-column: 3; grid-row: 1 / span 2; }
+  .knowledgeSearch { grid-template-columns: 1fr; }
+  .dataTabs { width: 100%; overflow-x: auto; }
+  .dataTabs button { flex: 1; justify-content: center; white-space: nowrap; }
 }

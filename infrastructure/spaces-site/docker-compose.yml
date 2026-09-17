@@ -36,6 +36,15 @@ services:
     command: ["node", "/app/server.js"]
     volumes:
       - /opt/spaces/repo/infrastructure/billing/server.js:/app/server.js:ro
+  data-plane:
+    image: node:20-alpine
+    container_name: spaces-data-plane
+    restart: unless-stopped
+    env_file:
+      - /opt/spaces/data-plane.env
+    command: ["node", "/app/server.js"]
+    volumes:
+      - /opt/spaces/repo/infrastructure/data-plane/server.js:/app/server.js:ro
   mcp-gateway:
     image: node:20-alpine
     container_name: spaces-mcp-gateway

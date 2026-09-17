@@ -58,6 +58,10 @@ function memoryReadable(context) {
   return context.scopes?.some((scope) => readScopes.has(scope));
 }
 
+function knowledgeReadable(context) {
+  return hasScope(context, "knowledge:read") || hasScope(context, "knowledge:write");
+}
+
 function publicTools(context) {
   const tools = [];
   if (memoryReadable(context)) {
@@ -158,6 +162,43 @@ function publicTools(context) {
       },
     );
   }
+  if (knowledgeReadable(context)) {
+    tools.push({
+      name: "knowledge.search",
+      description: "Search project-scoped knowledge using text and, optionally, a 1536-dimensional embedding.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          query: { type: "string", maxLength: 1000 },
+          embedding: { type: "array", items: { type: "number" }, minItems: 1536, maxItems: 1536 },
+          limit: { type: "integer", minimum: 1, maximum: 50 },
+        },
+        additionalProperties: false,
+      },
+    });
+  }
+  if (hasScope(context, "knowledge:write")) {
+    tools.push({
+      name: "knowledge.upsert",
+      description: "Create or update one project-scoped knowledge document. The project is fixed by the MCP credential.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          id: { type: "string", format: "uuid" },
+          title: { type: "string", minLength: 1, maxLength: 240 },
+          content: { type: "string", minLength: 1, maxLength: 200000 },
+          sourceType: { type: "string", enum: ["manual", "file", "service", "agent", "outline"] },
+          sourceId: { type: "string", maxLength: 500 },
+          service: { type: "string", pattern: "^[a-z0-9][a-z0-9-]{0,79}$" },
+          metadata: { type: "object" },
+          embedding: { type: "array", items: { type: "number" }, minItems: 1536, maxItems: 1536 },
+          embeddingModel: { type: "string", maxLength: 120 },
+        },
+        required: ["title", "content"],
+        additionalProperties: false,
+      },
+    });
+  }
   if (hasScope(context, "openseo:*")) {
     tools.push({
       name: "openseo.tools",
@@ -193,6 +234,14 @@ function stringField(args, name, { required: needed = false, max = 5000, pattern
   if (pattern) assertInput(pattern.test(value), `${name} has invalid format`);
   if (values) assertInput(values.includes(value), `${name} is unsupported`);
   return value.trim();
+}
+
+function vectorField(args, name) {
+  const value = args?.[name];
+  if (value === undefined || value === null) return null;
+  assertInput(Array.isArray(value) && value.length === 1536, `${name} must contain 1536 numbers`);
+  assertInput(value.every((item) => typeof item === "number" && Number.isFinite(item)), `${name} contains an invalid number`);
+  return `[${value.join(",")}]`;
 }
 
 function validateMemoryInput(operation, input) {
@@ -323,6 +372,14 @@ export function createGateway({ fetchImpl = fetch, now = () => Date.now(), rateL
     );
   }
 
+  async function knowledgeRpc(name, body) {
+    return post(
+      `${process.env.SUPABASE_URL}/rest/v1/rpc/${name}`,
+      { apikey: process.env.SUPABASE_ANON_KEY, "content-type": "application/json" },
+      body,
+    );
+  }
+
   async function callTool(context, token, name, args) {
     if (name.startsWith("memory.")) {
       if (!memoryReadable(context)) throw Object.assign(new Error("memory:read scope required"), { status: 403, code: -32003 });
@@ -331,6 +388,46 @@ export function createGateway({ fetchImpl = fetch, now = () => Date.now(), rateL
       }
       const operation = name.slice("memory.".length);
       return outline(context, operation, validateMemoryInput(operation, args));
+    }
+    if (name === "knowledge.search") {
+      if (!knowledgeReadable(context)) throw Object.assign(new Error("knowledge:read scope required"), { status: 403, code: -32003 });
+      const query = stringField(args, "query", { max: 1000 });
+      const embedding = vectorField(args, "embedding");
+      assertInput(Boolean(query || embedding), "query or embedding is required");
+      const limit = args?.limit === undefined ? 10 : Number(args.limit);
+      assertInput(Number.isInteger(limit) && limit >= 1 && limit <= 50, "limit must be from 1 to 50");
+      return knowledgeRpc("mcp_search_project_knowledge", {
+        p_credential_id: context.credential_id,
+        p_query: query,
+        p_embedding: embedding,
+        p_limit: limit,
+        p_gateway_secret: process.env.MCP_GATEWAY_SECRET,
+      });
+    }
+    if (name === "knowledge.upsert") {
+      if (!hasScope(context, "knowledge:write")) throw Object.assign(new Error("knowledge:write scope required"), { status: 403, code: -32003 });
+      const id = stringField(args, "id", { pattern: /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i });
+      const title = stringField(args, "title", { required: true, max: 240 });
+      const content = stringField(args, "content", { required: true, max: 200000 });
+      const sourceType = stringField(args, "sourceType", { values: ["manual", "file", "service", "agent", "outline"] }) || "agent";
+      const sourceId = stringField(args, "sourceId", { max: 500 });
+      const service = stringField(args, "service", { pattern: /^[a-z0-9][a-z0-9-]{0,79}$/ }) || "spaces";
+      const embeddingModel = stringField(args, "embeddingModel", { max: 120 });
+      const metadata = args?.metadata ?? {};
+      assertInput(metadata && typeof metadata === "object" && !Array.isArray(metadata), "metadata must be an object");
+      return knowledgeRpc("mcp_upsert_project_knowledge", {
+        p_credential_id: context.credential_id,
+        p_document_id: id || null,
+        p_title: title,
+        p_content: content,
+        p_source_type: sourceType,
+        p_source_id: sourceId || null,
+        p_service_slug: service,
+        p_metadata: metadata,
+        p_embedding: vectorField(args, "embedding"),
+        p_embedding_model: embeddingModel || null,
+        p_gateway_secret: process.env.MCP_GATEWAY_SECRET,
+      });
     }
     if (name === "openseo.tools") {
       if (!hasScope(context, "openseo:*")) throw Object.assign(new Error("openseo:* scope required"), { status: 403, code: -32003 });
