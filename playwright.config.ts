@@ -27,6 +27,18 @@ export default defineConfig({
         DATA_PLANE_INTERNAL_SECRET: "playwright-internal-secret",
         PORT: "4300",
       },
+    }, {
+      command: "node infrastructure/billing/server.js",
+      url: "http://127.0.0.1:4301/health",
+      reuseExistingServer: !process.env.CI,
+      env: {
+        SUPABASE_URL: process.env.LOCAL_SUPABASE_URL,
+        SUPABASE_SERVICE_ROLE_KEY: process.env.LOCAL_SUPABASE_SERVICE_KEY,
+        CREEM_API_KEY: "playwright-test-key",
+        CREEM_WEBHOOK_SECRET: "playwright-webhook-secret",
+        CREEM_MODE: "test",
+        PORT: "4301",
+      },
     }] : []),
   ],
   projects: [

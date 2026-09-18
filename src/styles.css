@@ -217,6 +217,7 @@ code { padding: 3px 6px; border: 1px solid var(--border); border-radius: 4px; ba
 .workspaceSection { margin-top: 42px; padding-top: 28px; border-top: 1px solid var(--border); }
 .billingPanel { margin-top: 42px; padding-top: 28px; border-top: 1px solid var(--border); }
 .billingStatus { display: flex; align-items: center; gap: 8px; }
+.billingRuntime { align-items: center; justify-content: space-between; margin: 0 0 18px; flex-wrap: wrap; }
 .billingPlans { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; }
 .billingPlan { display: grid; grid-template-columns: minmax(0,1fr) auto auto; gap: 12px; align-items: end; padding: 14px 16px; border: 1px solid var(--border); border-radius: var(--radius); }
 .billingPlan > div { align-self: center; }
@@ -402,7 +403,7 @@ legend { padding: 0 4px; font-size: .8125rem; font-weight: 600; }
   .tenantServices { display: none; grid-column: 1 / -1; justify-content: flex-start; padding-top: 8px; border-top: 1px solid var(--border); }
   .tenantBar.expanded .tenantServices { display: flex; }
   .tenantProfile { position: absolute; right: 58px; top: 14px; }
-  .tenantMain .brand { max-width: 42px; overflow: hidden; }
+  .tenantMain .brand > span:last-child { display: none; }
   .hero, .authShell { grid-template-columns: 1fr; }
   .hero { min-height: auto; padding-top: 44px; }
   .hero h1 { font-size: 2.25rem; }

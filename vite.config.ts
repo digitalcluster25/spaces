@@ -9,6 +9,10 @@ export default defineConfig({
   define: { __APP_REVISION__: JSON.stringify(revision) },
   preview: {
     proxy: {
+      "/api/billing": {
+        target: "http://127.0.0.1:4301",
+        rewrite: (path) => path.replace(/^\/api\/billing/, ""),
+      },
       "/api/data": {
         target: "http://127.0.0.1:4300",
         rewrite: (path) => path.replace(/^\/api\/data/, ""),

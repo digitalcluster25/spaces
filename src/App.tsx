@@ -53,6 +53,7 @@ import {
   authReady,
   createProject,
   createBillingCheckout,
+  createBillingPortal,
   createMcpCredential,
   createServiceTicket,
   createProjectInvitation,
@@ -639,7 +640,7 @@ function SuperadminPage({ session, workspace }: { session: Session | null; works
     setLoading(true);
     setError("");
     try {
-      setData(await loadAdminData());
+      setData(await loadAdminData(session));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Не удалось загрузить суперадминку");
     } finally {
@@ -738,7 +739,10 @@ function AccountLimitEditor({ account, limits, overrides, confirm }: { account: 
 }
 
 function PlansAdmin({ data, confirm }: { data: AdminData; confirm: (text: string, action: () => Promise<void>) => void }) {
-  return <div className="planColumns">{data.plans.map((plan) => <section className="planSection" key={plan.id}><div className="sectionHeader"><div><h2>{plan.name}</h2><p>{plan.price_cents ? "$" + (plan.price_cents / 100).toFixed(0) + " / " + (plan.billing_mode === "seat" ? "место" : "аккаунт") : "Системный тариф"}</p></div><code>{plan.code}</code></div>{["golden", "corporate"].includes(plan.code) && <PlanBillingEditor plan={plan} confirm={confirm} />}<div className="dataList">{data.limits.filter((limit) => limit.plan_id === plan.id).map((limit) => <LimitAdminRow key={limit.key} planCode={plan.code} limit={limit} confirm={confirm} />)}</div></section>)}</div>;
+  const billable = data.plans.filter((plan) => ["golden", "corporate"].includes(plan.code));
+  const liveProducts = billable.filter((plan) => plan.creem_live_product_id).length;
+  const runtimeReady = data.billingRuntime.status === "ok" && data.billingRuntime.apiConfigured && data.billingRuntime.webhookConfigured;
+  return <><div className="notice billingRuntime"><strong>Creem {data.billingRuntime.mode}</strong><span>{runtimeReady ? "API и webhook настроены" : "Billing-сервис не готов"}</span><span>Live products {liveProducts}/{billable.length}</span></div><div className="planColumns">{data.plans.map((plan) => <section className="planSection" key={plan.id}><div className="sectionHeader"><div><h2>{plan.name}</h2><p>{plan.price_cents ? "$" + (plan.price_cents / 100).toFixed(0) + " / " + (plan.billing_mode === "seat" ? "место" : "аккаунт") : "Системный тариф"}</p></div><code>{plan.code}</code></div>{["golden", "corporate"].includes(plan.code) && <PlanBillingEditor plan={plan} confirm={confirm} />}<div className="dataList">{data.limits.filter((limit) => limit.plan_id === plan.id).map((limit) => <LimitAdminRow key={limit.key} planCode={plan.code} limit={limit} confirm={confirm} />)}</div></section>)}</div></>;
 }
 
 function PlanBillingEditor({ plan, confirm }: { plan: AdminData["plans"][number]; confirm: (text: string, action: () => Promise<void>) => void }) {
@@ -984,10 +988,32 @@ function BillingPanel({ session, workspace, refresh }: { session: Session; works
     }
   }
 
+  async function openPortal() {
+    const portalTab = window.open("about:blank", "_blank");
+    if (portalTab) portalTab.opener = null;
+    setWorking("portal");
+    setMessage("");
+    try {
+      const url = await createBillingPortal(session, workspace.account.id);
+      if (portalTab) portalTab.location.replace(url);
+      else window.location.assign(url);
+    } catch (cause) {
+      portalTab?.close();
+      setMessage(cause instanceof Error ? cause.message : "Не удалось открыть управление оплатой");
+    } finally {
+      setWorking("");
+    }
+  }
+
   const plans = workspace.plans
     .filter((plan) => ["golden", "corporate"].includes(plan.code))
     .sort((left, right) => ["golden", "corporate"].indexOf(left.code) - ["golden", "corporate"].indexOf(right.code));
-  return <section className="billingPanel"><div className="sectionHeader"><div><span className="sectionKicker"><CreditCard size={14} />оплата</span><h2>Тариф аккаунта</h2><p>Оплата действует для всех проектов этого аккаунта.</p></div><div className="billingStatus"><strong>{currentPlan?.name ?? "Пробный период"}</strong><span className={`status status-${workspace.subscription?.status === "active" ? "ready" : "disabled"}`}>{billingStatusLabel(workspace.subscription?.status)}</span></div></div>{billingSuccess && <div className="notice">Оплата завершена. Обновляем статус подписки.</div>}{message && <div className="notice errorNotice">{message}</div>}<div className="billingPlans">{plans.map((plan) => <article className="billingPlan" key={plan.id}><div><strong>{plan.name}</strong><p>${(plan.price_cents / 100).toFixed(0)} в месяц {plan.billing_mode === "seat" ? "за участника" : "за аккаунт"} · 14 дней бесплатно</p></div>{plan.billing_mode === "seat" && <label>Участники<input type="number" min={1} max={1000} value={seats} onChange={(event) => setSeats(Math.max(1, Number(event.target.value) || 1))} /></label>}<button className="button buttonPrimary" disabled={Boolean(working)} onClick={() => void openCheckout(plan.code, plan.billing_mode === "seat" ? seats : 1)}>{working === plan.code ? "Открываем..." : "Выбрать"}</button></article>)}</div>{workspace.subscription?.current_period_end && <p className="billingPeriod">Текущий период до {new Date(workspace.subscription.current_period_end).toLocaleDateString("ru")}</p>}</section>;
+  const subscription = workspace.subscription;
+  const accessActive = subscription?.status === "active"
+    || (subscription?.status === "trialing" && new Date(subscription.trial_ends_at ?? 0).getTime() > Date.now())
+    || (subscription?.status === "canceled" && new Date(subscription.current_period_end ?? 0).getTime() > Date.now())
+    || (["past_due", "expired"].includes(subscription?.status ?? "") && new Date(subscription?.grace_ends_at ?? 0).getTime() > Date.now());
+  return <section className="billingPanel"><div className="sectionHeader"><div><span className="sectionKicker"><CreditCard size={14} />оплата</span><h2>Тариф аккаунта</h2><p>Оплата действует для всех проектов этого аккаунта.</p></div><div className="billingStatus"><strong>{currentPlan?.name ?? "Пробный период"}</strong><span className={`status status-${accessActive ? "ready" : "disabled"}`}>{billingStatusLabel(workspace.subscription?.status)}</span>{workspace.accountRole === "owner" && workspace.subscription?.creem_customer_id && <button className="button buttonOutline" disabled={Boolean(working)} onClick={() => void openPortal()}>{working === "portal" ? <LoaderCircle className="spin" size={15} /> : <ExternalLink size={15} />}Управлять оплатой</button>}</div></div>{billingSuccess && <div className="notice">Оплата завершена. Обновляем статус подписки.</div>}{message && <div className="notice errorNotice">{message}</div>}<div className="billingPlans">{plans.map((plan) => <article className="billingPlan" key={plan.id}><div><strong>{plan.name}</strong><p>${(plan.price_cents / 100).toFixed(0)} в месяц {plan.billing_mode === "seat" ? "за участника" : "за аккаунт"} · 14 дней бесплатно</p></div>{plan.billing_mode === "seat" && <label>Участники<input type="number" min={1} max={1000} value={seats} onChange={(event) => setSeats(Math.max(1, Number(event.target.value) || 1))} /></label>}<button className="button buttonPrimary" disabled={Boolean(working)} onClick={() => void openCheckout(plan.code, plan.billing_mode === "seat" ? seats : 1)}>{working === plan.code ? "Открываем..." : "Выбрать"}</button></article>)}</div>{workspace.subscription?.current_period_end && <p className="billingPeriod">Текущий период до {new Date(workspace.subscription.current_period_end).toLocaleDateString("ru")}</p>}{workspace.subscription?.grace_ends_at && <p className="billingPeriod">Льготный доступ до {new Date(workspace.subscription.grace_ends_at).toLocaleDateString("ru")}</p>}</section>;
 }
 
 function billingStatusLabel(status?: string) {

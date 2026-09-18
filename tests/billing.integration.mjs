@@ -11,7 +11,10 @@ const service = createClient(url, serviceKey, { auth: { persistSession: false } 
 const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 const password = `Spaces-${suffix}-Aa1!`;
 const productId = `prod_test_${suffix}`;
+const corporateProductId = `prod_corporate_${suffix}`;
 const createdUserIds = [];
+const eventBase = Date.now();
+const eventTime = (offset) => new Date(eventBase + offset).toISOString();
 
 function requireData(result, operation) {
   if (result.error) throw new Error(`${operation}: ${result.error.message}`);
@@ -31,6 +34,13 @@ try {
   const owner = await createUser("billing-owner");
   const stranger = await createUser("billing-stranger");
   const golden = requireData(await service.from("plans").update({ creem_test_product_id: productId }).eq("code", "golden").select("id").single(), "configure golden product");
+  requireData(await service.from("plans").update({ creem_test_product_id: corporateProductId }).eq("code", "corporate"), "configure corporate product");
+
+  requireData(await service.from("account_memberships").insert({ account_id: owner.accountId, user_id: stranger.userId, role: "member", status: "active" }), "add corporate member");
+  const corporateRows = requireData(await owner.client.rpc("prepare_billing_checkout", {
+    p_account_id: owner.accountId, p_plan_code: "corporate", p_seats: 1, p_mode: "test",
+  }), "prepare corporate checkout");
+  assert.equal(corporateRows[0].seats, 2, "corporate checkout must cover every active account member");
 
   const forbidden = await stranger.client.rpc("prepare_billing_checkout", {
     p_account_id: owner.accountId, p_plan_code: "golden", p_seats: 1, p_mode: "test",
@@ -51,6 +61,7 @@ try {
   const baseEvent = {
     p_mode: "test",
     p_payload_sha256: createHash("sha256").update(suffix).digest("hex"),
+    p_event_created_at: eventTime(0),
     p_account_id: owner.accountId,
     p_plan_code: "golden",
     p_product_id: productId,
@@ -66,6 +77,7 @@ try {
     ...baseEvent,
     p_event_id: `evt_checkout_${suffix}`,
     p_event_type: "checkout.completed",
+    p_account_id: null,
     p_subscription_status: "trialing",
     p_trial_ends_at: "2026-09-28T00:00:00Z",
   }), "apply checkout event");
@@ -75,6 +87,7 @@ try {
     ...baseEvent,
     p_event_id: `evt_paid_${suffix}`,
     p_event_type: "subscription.paid",
+    p_event_created_at: eventTime(60_000),
     p_account_id: null,
     p_plan_code: null,
     p_checkout_request_id: null,
@@ -93,17 +106,85 @@ try {
   let subscription = requireData(await service.from("account_subscriptions").select("*").eq("account_id", owner.accountId).single(), "load active subscription");
   assert.equal(subscription.plan_id, golden.id);
   assert.equal(subscription.status, "active");
+  assert.equal(subscription.provider_mode, "test");
   assert.equal(subscription.creem_subscription_id, `sub_${suffix}`);
 
+  const forbiddenPortal = await stranger.client.rpc("prepare_billing_portal", { p_account_id: owner.accountId, p_mode: "test" });
+  assert(forbiddenPortal.error, "a different account owner must not open the billing portal");
+  const portal = requireData(await owner.client.rpc("prepare_billing_portal", { p_account_id: owner.accountId, p_mode: "test" }), "prepare billing portal");
+  assert.equal(portal[0].customer_id, `cust_${suffix}`);
+
+  const stale = requireData(await service.rpc("apply_creem_webhook", {
+    ...baseEvent,
+    p_event_id: `evt_stale_${suffix}`,
+    p_event_type: "subscription.canceled",
+    p_event_created_at: eventTime(30_000),
+    p_account_id: null,
+    p_plan_code: null,
+    p_checkout_request_id: null,
+  }), "ignore stale event");
+  assert.equal(stale, false);
+  subscription = requireData(await service.from("account_subscriptions").select("status").eq("account_id", owner.accountId).single(), "load subscription after stale event");
+  assert.equal(subscription.status, "active");
+
+  const ignored = requireData(await service.from("billing_webhook_events").select("applied,ignore_reason").eq("external_event_id", `evt_stale_${suffix}`).single(), "load ignored event");
+  assert.equal(ignored.applied, false);
+  assert.equal(ignored.ignore_reason, "stale_event");
+
   requireData(await service.rpc("apply_creem_webhook", {
-    ...baseEvent, p_event_id: `evt_canceled_${suffix}`, p_event_type: "subscription.canceled",
+    ...baseEvent,
+    p_event_id: `evt_refund_${suffix}`,
+    p_event_type: "refund.created",
+    p_event_created_at: eventTime(120_000),
+    p_account_id: null,
+    p_plan_code: null,
+    p_product_id: null,
+    p_checkout_request_id: null,
+  }), "apply refund without product");
+  subscription = requireData(await service.from("account_subscriptions").select("status").eq("account_id", owner.accountId).single(), "load paused subscription");
+  assert.equal(subscription.status, "paused");
+
+  requireData(await service.rpc("apply_creem_webhook", {
+    ...baseEvent,
+    p_event_id: `evt_renewed_${suffix}`,
+    p_event_type: "subscription.paid",
+    p_event_created_at: eventTime(180_000),
+    p_account_id: null,
+    p_plan_code: null,
+    p_checkout_request_id: null,
+  }), "apply renewal");
+
+  const gracePeriodEnd = new Date(Date.now() + 3_600_000).toISOString();
+  requireData(await service.rpc("apply_creem_webhook", {
+    ...baseEvent,
+    p_event_id: `evt_expired_${suffix}`,
+    p_event_type: "subscription.expired",
+    p_event_created_at: eventTime(240_000),
+    p_account_id: null,
+    p_plan_code: null,
+    p_period_end: gracePeriodEnd,
+    p_checkout_request_id: null,
+  }), "apply expired retry-period event");
+  subscription = requireData(await service.from("account_subscriptions").select("status,grace_ends_at").eq("account_id", owner.accountId).single(), "load grace subscription");
+  assert.equal(subscription.status, "past_due");
+  assert(new Date(subscription.grace_ends_at).getTime() > new Date(gracePeriodEnd).getTime());
+
+  requireData(await service.from("account_subscriptions").update({ grace_ends_at: new Date(Date.now() - 60_000).toISOString() }).eq("account_id", owner.accountId), "expire billing grace");
+  const blockedLimit = requireData(await owner.client.rpc("effective_account_limit", { check_account_id: owner.accountId, limit_key: "active_projects" }), "load blocked limit");
+  assert.equal(blockedLimit, 0);
+
+  requireData(await service.rpc("apply_creem_webhook", {
+    ...baseEvent,
+    p_event_id: `evt_canceled_${suffix}`,
+    p_event_type: "subscription.canceled",
+    p_event_created_at: eventTime(300_000),
   }), "apply canceled event");
   subscription = requireData(await service.from("account_subscriptions").select("status").eq("account_id", owner.accountId).single(), "load canceled subscription");
   assert.equal(subscription.status, "canceled");
 
   console.log("billing integration passed");
 } finally {
-  await service.from("plans").update({ creem_test_product_id: null }).eq("creem_test_product_id", productId);
+  await service.from("plans").update({ creem_test_product_id: null }).in("creem_test_product_id", [productId, corporateProductId]);
   if (createdUserIds.length) await service.from("accounts").delete().in("owner_id", createdUserIds);
   for (const userId of createdUserIds) await service.auth.admin.deleteUser(userId);
 }

@@ -81,30 +81,70 @@ export function normalizeCreemEvent(event) {
   if (!event || typeof event.id !== "string" || !supportedEvents.has(event.eventType) || typeof event.object !== "object") {
     throw Object.assign(new Error("Unsupported webhook event"), { status: 400 });
   }
+  const eventCreatedAt = new Date(typeof event.created_at === "number" ? event.created_at : String(event.created_at || ""));
+  if (Number.isNaN(eventCreatedAt.getTime())) throw Object.assign(new Error("Webhook timestamp is missing"), { status: 400 });
   const object = event.object;
   const subscription = object.object === "subscription" ? object : object.subscription || {};
   const metadata = object.metadata || subscription.metadata || object.checkout?.metadata || {};
   const productId = objectId(subscription.product) || objectId(object.product) || objectId(object.order?.product);
   const accountId = metadata.account_id || null;
   const planCode = metadata.plan_code || null;
-  if (!productId) throw Object.assign(new Error("Webhook product is missing"), { status: 400 });
+  const subscriptionId = objectId(subscription);
+  if (!productId && !subscriptionId) throw Object.assign(new Error("Webhook product and subscription are missing"), { status: 400 });
 
   return {
     p_event_id: event.id,
     p_mode: mode,
     p_event_type: event.eventType,
     p_payload_sha256: "",
+    p_event_created_at: eventCreatedAt.toISOString(),
     p_account_id: accountId,
     p_plan_code: planCode,
     p_product_id: productId,
     p_customer_id: objectId(subscription.customer) || objectId(object.customer) || objectId(object.order?.customer),
-    p_subscription_id: objectId(subscription),
+    p_subscription_id: subscriptionId,
     p_subscription_status: typeof subscription.status === "string" ? subscription.status : null,
     p_seats: seats(metadata.seats || object.units || object.checkout?.units || subscription.items?.[0]?.units),
     p_period_end: subscription.current_period_end_date || null,
     p_trial_ends_at: subscription.trial_period_end_date || subscription.trial_ends_at || (event.eventType === "subscription.trialing" ? subscription.current_period_end_date : null),
     p_checkout_request_id: metadata.checkout_request_id || object.request_id || object.checkout?.request_id || null,
   };
+}
+
+async function portal(request, response) {
+  const token = request.headers.authorization?.match(/^Bearer\s+(.+)$/i)?.[1];
+  if (!token) return json(response, 401, { error: "Authentication required" });
+  const body = JSON.parse((await rawBody(request)).toString("utf8") || "{}");
+  const preparedRows = await supabaseRpc("prepare_billing_portal", {
+    p_account_id: body.accountId,
+    p_mode: mode,
+  }, token);
+  const customerId = preparedRows?.[0]?.customer_id;
+  if (!customerId) throw new Error("Billing portal preparation failed");
+
+  const providerResponse = await fetch(`${creemApi}/customers/billing`, {
+    method: "POST",
+    headers: { "x-api-key": process.env.CREEM_API_KEY, "content-type": "application/json" },
+    body: JSON.stringify({ customer_id: customerId }),
+  });
+  const provider = await providerResponse.json().catch(() => null);
+  if (!providerResponse.ok || !provider?.customer_portal_link) {
+    throw Object.assign(new Error(provider?.message || `Creem request failed (${providerResponse.status})`), { code: `creem_${providerResponse.status}` });
+  }
+  return json(response, 200, { portalUrl: provider.customer_portal_link });
+}
+
+async function readiness(request, response) {
+  const token = request.headers.authorization?.match(/^Bearer\s+(.+)$/i)?.[1];
+  if (!token) return json(response, 401, { error: "Authentication required" });
+  const allowed = await supabaseRpc("is_superadmin", {}, token);
+  if (allowed !== true) return json(response, 403, { error: "Superadmin AAL2 access required" });
+  return json(response, 200, {
+    status: "ok",
+    mode,
+    apiConfigured: Boolean(process.env.CREEM_API_KEY),
+    webhookConfigured: Boolean(process.env.CREEM_WEBHOOK_SECRET),
+  });
 }
 
 async function checkout(request, response) {
@@ -178,7 +218,9 @@ export function createBillingServer() {
   return createServer(async (request, response) => {
     try {
       if (request.method === "GET" && request.url === "/health") return json(response, 200, { status: "ok", mode });
+      if (request.method === "GET" && request.url === "/readiness") return await readiness(request, response);
       if (request.method === "POST" && request.url === "/checkout") return await checkout(request, response);
+      if (request.method === "POST" && request.url === "/portal") return await portal(request, response);
       if (request.method === "POST" && request.url === "/webhook") return await webhook(request, response);
       return json(response, 404, { error: "Not found" });
     } catch (error) {
@@ -191,5 +233,6 @@ export function createBillingServer() {
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const missing = required.filter((name) => !process.env[name]);
   if (missing.length) throw new Error(`Missing required environment: ${missing.join(", ")}`);
-  createBillingServer().listen(3000, "0.0.0.0", () => console.log(`Spaces billing listening in ${mode} mode`));
+  const port = Number(process.env.PORT || 3000);
+  createBillingServer().listen(port, "0.0.0.0", () => console.log(`Spaces billing listening in ${mode} mode on ${port}`));
 }

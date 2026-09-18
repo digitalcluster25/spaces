@@ -265,8 +265,18 @@ export type Subscription = {
   seats: number;
   current_period_end: string | null;
   trial_ends_at: string | null;
+  provider_mode: "test" | "live" | null;
+  grace_ends_at: string | null;
+  last_billing_event_at: string | null;
   creem_customer_id: string | null;
   creem_subscription_id: string | null;
+};
+
+export type BillingRuntime = {
+  status: "ok" | "unavailable";
+  mode: "test" | "live" | "unknown";
+  apiConfigured: boolean;
+  webhookConfigured: boolean;
 };
 
 export type AccountLimitOverride = {
@@ -383,6 +393,7 @@ export type AdminData = {
   operationalChecks: OperationalCheck[];
   backupRuns: BackupRun[];
   restoreDrills: RestoreDrill[];
+  billingRuntime: BillingRuntime;
 };
 
 function requireClient() {
@@ -627,7 +638,7 @@ export async function acceptHarnessVersion(projectId: string) {
   if (error) throw error;
 }
 
-export async function loadAdminData(): Promise<AdminData> {
+export async function loadAdminData(session: Session): Promise<AdminData> {
   const client = requireClient();
   const results = await Promise.all([
     client.from("profiles").select("*").order("created_at", { ascending: false }),
@@ -650,6 +661,12 @@ export async function loadAdminData(): Promise<AdminData> {
   ]);
   const failed = results.find((result) => result.error);
   if (failed?.error) throw failed.error;
+  const billingRuntime = await fetch("/api/billing/readiness", {
+    cache: "no-store",
+    headers: { authorization: `Bearer ${session.access_token}` },
+  })
+    .then(async (response) => response.ok ? await response.json() as BillingRuntime : null)
+    .catch(() => null);
   return {
     profiles: (results[0].data ?? []) as Profile[],
     accounts: (results[1].data ?? []) as Account[],
@@ -668,6 +685,7 @@ export async function loadAdminData(): Promise<AdminData> {
     operationalChecks: (results[14].data ?? []) as OperationalCheck[],
     backupRuns: (results[15].data ?? []) as BackupRun[],
     restoreDrills: (results[16].data ?? []) as RestoreDrill[],
+    billingRuntime: billingRuntime ?? { status: "unavailable", mode: "unknown", apiConfigured: false, webhookConfigured: false },
   };
 }
 
@@ -702,6 +720,17 @@ export async function createBillingCheckout(session: Session, accountId: string,
   const data = await response.json().catch(() => null);
   if (!response.ok || !data?.checkoutUrl) throw new Error(data?.error || "Не удалось создать оплату");
   return data.checkoutUrl as string;
+}
+
+export async function createBillingPortal(session: Session, accountId: string) {
+  const response = await fetch("/api/billing/portal", {
+    method: "POST",
+    headers: { authorization: `Bearer ${session.access_token}`, "content-type": "application/json" },
+    body: JSON.stringify({ accountId }),
+  });
+  const data = await response.json().catch(() => null);
+  if (!response.ok || !data?.portalUrl) throw new Error(data?.error || "Не удалось открыть управление оплатой");
+  return data.portalUrl as string;
 }
 
 export async function adminUpdatePlanBilling(planCode: string, testProductId: string, liveProductId: string) {

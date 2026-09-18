@@ -86,9 +86,14 @@ test("superadmin controls operations after MFA on desktop and mobile", async ({ 
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await page.screenshot({ path: "/tmp/spaces-operations-mobile.png", fullPage: true });
 
+    await page.getByRole("button", { name: "Тарифы" }).click();
+    await expect(page.getByText("Creem test", { exact: true })).toBeVisible();
+    await expect(page.getByText("API и webhook настроены", { exact: true })).toBeVisible();
+    await expect(page.getByText("Live products 0/2", { exact: true })).toBeVisible();
+
     await page.getByRole("button", { name: "Аудит" }).click();
     await page.getByPlaceholder("Действие, проект или объект").fill("auth.mfa_verified");
-    await expect(page.getByText("auth.mfa_verified", { exact: true })).toBeVisible();
+    await expect(page.getByText("auth.mfa_verified", { exact: true }).first()).toBeVisible();
   } finally {
     if (factorId) await owner.auth.mfa.unenroll({ factorId });
     await owner.auth.signOut();

@@ -16,6 +16,7 @@ test("normalizes a subscription event without retaining customer PII", () => {
   const result = normalizeCreemEvent({
     id: "evt_paid",
     eventType: "subscription.paid",
+    created_at: 1789344000000,
     object: {
       id: "sub_1",
       object: "subscription",
@@ -35,6 +36,7 @@ test("normalizes a subscription event without retaining customer PII", () => {
   assert.equal(result.p_product_id, "prod_1");
   assert.equal(result.p_plan_code, "golden");
   assert.equal(result.p_subscription_status, null);
+  assert.equal(result.p_event_created_at, "2026-09-14T00:00:00.000Z");
   assert.equal(JSON.stringify(result).includes("private@example.com"), false);
 });
 
@@ -42,25 +44,37 @@ test("allows later events to resolve the account by subscription id", () => {
   const result = normalizeCreemEvent({
     id: "evt_refund",
     eventType: "refund.created",
-    object: { subscription: { id: "sub_1", product: "prod_1" } },
+    created_at: 1789344000000,
+    object: { subscription: { id: "sub_1", status: "canceled" } },
   });
   assert.equal(result.p_plan_code, null);
   assert.equal(result.p_subscription_id, "sub_1");
+  assert.equal(result.p_product_id, null);
 });
 
 test("falls back to one seat for invalid provider data", () => {
   const result = normalizeCreemEvent({
     id: "evt_units",
     eventType: "subscription.active",
+    created_at: 1789344000000,
     object: { id: "sub_1", object: "subscription", product: "prod_1", metadata: { seats: "unlimited" } },
   });
   assert.equal(result.p_seats, 1);
 });
 
-test("rejects events without a product", () => {
+test("rejects events without a product or subscription", () => {
   assert.throws(() => normalizeCreemEvent({
     id: "evt_bad",
     eventType: "subscription.paid",
-    object: { id: "sub_1", object: "subscription" },
-  }), /product is missing/);
+    created_at: 1789344000000,
+    object: {},
+  }), /product and subscription are missing/);
+});
+
+test("rejects events without a provider timestamp", () => {
+  assert.throws(() => normalizeCreemEvent({
+    id: "evt_bad_time",
+    eventType: "subscription.paid",
+    object: { id: "sub_1", object: "subscription", product: "prod_1" },
+  }), /timestamp is missing/);
 });
