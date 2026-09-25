@@ -66,6 +66,7 @@ import {
   loadAdminData,
   previewHarnessUserConfig,
   recordSecuritySessionEvent,
+  reserveReferralSignup,
   restoreProject,
   removeProjectMember,
   rollbackHarnessUserConfig,
@@ -910,6 +911,7 @@ function ProjectDashboard({ session, workspace, refresh }: { session: Session; w
       </div>
 
       <IncomingInvitations session={session} workspace={workspace} refresh={refresh} />
+      <ReferralPanel workspace={workspace} />
 
       <div className="tabs" role="tablist" aria-label="Состояние проектов">
         <button className={tab === "active" ? "active" : ""} onClick={() => setTab("active")}>Активные</button>
@@ -955,6 +957,28 @@ function ProjectDashboard({ session, workspace, refresh }: { session: Session; w
       )}
     </section>
   );
+}
+
+function ReferralPanel({ workspace }: { workspace: Workspace }) {
+  const [copied, setCopied] = React.useState<"code" | "link" | "">("");
+
+  async function copy(value: string, kind: "code" | "link") {
+    await navigator.clipboard.writeText(value);
+    setCopied(kind);
+    window.setTimeout(() => setCopied(""), 1600);
+  }
+
+  return <section className="referralPanel">
+    <div className="sectionHeader"><div><span className="sectionKicker"><Users size={14} />приглашения</span><h2>Реферальная регистрация</h2><p>По этой ссылке или коду можно создать новый аккаунт Spaces.</p></div><span className="badge dark">{workspace.referrals.count} приглашено</span></div>
+    <div className="referralShare">
+      <label>Код<div><code>{workspace.referrals.code}</code><button className="iconButton" type="button" title="Скопировать код" onClick={() => void copy(workspace.referrals.code, "code")}>{copied === "code" ? <Check size={16} /> : <Copy size={16} />}</button></div></label>
+      <label>Ссылка<div><input readOnly value={workspace.referrals.link} /><button className="iconButton" type="button" title="Скопировать ссылку" onClick={() => void copy(workspace.referrals.link, "link")}>{copied === "link" ? <Check size={16} /> : <Copy size={16} />}</button></div></label>
+    </div>
+    <div className="referralList">
+      {workspace.referrals.invited.map((invitee, index) => <div className="referralRow" key={`${invitee.joined_at}-${index}`}><span className="userAvatar">{invitee.display_name.slice(0, 1).toUpperCase()}</span><div><strong>{invitee.display_name}</strong><small>{invitee.masked_email ?? "Email скрыт"}</small></div><time dateTime={invitee.joined_at}>{new Date(invitee.joined_at).toLocaleDateString("ru")}</time></div>)}
+      {!workspace.referrals.invited.length && <div className="emptyState">По вашей ссылке пока никто не зарегистрировался.</div>}
+    </div>
+  </section>;
 }
 
 function BillingPanel({ session, workspace, refresh }: { session: Session; workspace: Workspace; refresh: () => Promise<void> }) {
@@ -1596,6 +1620,7 @@ function AuthPage({ mode }: { mode: AuthMode }) {
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [name, setName] = React.useState("");
+  const [referralCode, setReferralCode] = React.useState(() => new URLSearchParams(window.location.search).get("ref")?.trim() ?? "");
   const [message, setMessage] = React.useState("");
   const [loading, setLoading] = React.useState(false);
   const title = isLogin ? "Вход в Spaces" : isRegister ? "Создать аккаунт Spaces" : "Восстановить пароль";
@@ -1608,6 +1633,14 @@ function AuthPage({ mode }: { mode: AuthMode }) {
     if (!supabase) return setMessage("Авторизация не подключена.");
     setLoading(true);
     setMessage("");
+    if (isRegister) {
+      try {
+        await reserveReferralSignup(email, referralCode);
+      } catch {
+        setLoading(false);
+        return setMessage("Укажите действующий реферальный код.");
+      }
+    }
     const result = isLogin
       ? await supabase.auth.signInWithPassword({ email, password })
       : isRegister
@@ -1621,6 +1654,14 @@ function AuthPage({ mode }: { mode: AuthMode }) {
 
   async function googleAuth() {
     if (!supabase) return setMessage("Авторизация не подключена.");
+    if (isRegister) {
+      if (!email.trim() || !referralCode.trim()) return setMessage("Для Google укажите email аккаунта и реферальный код.");
+      try {
+        await reserveReferralSignup(email, referralCode);
+      } catch {
+        return setMessage("Укажите действующий реферальный код.");
+      }
+    }
     const { error } = await supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: `${window.location.origin}${redirect}` } });
     if (error) setMessage(error.message);
   }
@@ -1631,6 +1672,7 @@ function AuthPage({ mode }: { mode: AuthMode }) {
       <form className="authForm" onSubmit={handleSubmit}>
         {isRegister && <label>Имя<input value={name} onChange={(event) => setName(event.target.value)} autoComplete="name" required /></label>}
         <label>Email<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" required /></label>
+        {isRegister && <label>Реферальный код<input value={referralCode} onChange={(event) => setReferralCode(event.target.value)} autoComplete="off" spellCheck={false} required /></label>}
         {mode !== "forgot" && <label>Пароль<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete={isLogin ? "current-password" : "new-password"} minLength={8} required /></label>}
         <button className="button buttonPrimary buttonFull" disabled={loading}>{loading ? "Подождите..." : isLogin ? "Войти" : isRegister ? "Зарегистрироваться" : "Отправить ссылку"}</button>
         {mode !== "forgot" && <button className="button buttonOutline buttonFull" type="button" onClick={() => void googleAuth()}><Mail size={17} />Продолжить с Google</button>}

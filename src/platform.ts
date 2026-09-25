@@ -217,6 +217,19 @@ export type IncomingInvitation = {
   expires_at: string;
 };
 
+export type ReferralInvitee = {
+  display_name: string;
+  masked_email: string | null;
+  joined_at: string;
+};
+
+export type ReferralOverview = {
+  code: string;
+  link: string;
+  count: number;
+  invited: ReferralInvitee[];
+};
+
 export type Workspace = {
   profile: Profile;
   account: Account;
@@ -228,6 +241,7 @@ export type Workspace = {
   mcpCredentials: McpCredential[];
   projectAccess: ProjectAccess | null;
   incomingInvitations: IncomingInvitation[];
+  referrals: ReferralOverview;
   harness: HarnessState | null;
   harnessVersion: HarnessVersion | null;
   harnessHistory: ProjectHarnessVersion[];
@@ -453,7 +467,7 @@ export async function loadWorkspace(session: Session): Promise<Workspace> {
     throw projectServicesResult.error || mcpCredentialsResult.error || subscriptionResult.error;
   }
 
-  const [harnessResult, harnessHistoryResult, projectAccessResult, incomingInvitationsResult] = await Promise.all([
+  const [harnessResult, harnessHistoryResult, projectAccessResult, incomingInvitationsResult, referralsResult] = await Promise.all([
     activeProjectId
       ? client.from("project_harness_settings").select("*").eq("project_id", activeProjectId).maybeSingle()
       : Promise.resolve({ data: null, error: null }),
@@ -464,9 +478,10 @@ export async function loadWorkspace(session: Session): Promise<Workspace> {
       ? client.rpc("get_project_access", { p_project_id: activeProjectId })
       : Promise.resolve({ data: null, error: null }),
     client.rpc("list_my_project_invitations"),
+    client.rpc("get_my_referral_overview"),
   ]);
-  if (harnessResult.error || harnessHistoryResult.error || projectAccessResult.error || incomingInvitationsResult.error) {
-    throw harnessResult.error || harnessHistoryResult.error || projectAccessResult.error || incomingInvitationsResult.error;
+  if (harnessResult.error || harnessHistoryResult.error || projectAccessResult.error || incomingInvitationsResult.error || referralsResult.error) {
+    throw harnessResult.error || harnessHistoryResult.error || projectAccessResult.error || incomingInvitationsResult.error || referralsResult.error;
   }
   const harness = harnessResult.data as HarnessState | null;
   const harnessVersionResult = harness?.active_version_id
@@ -485,12 +500,22 @@ export async function loadWorkspace(session: Session): Promise<Workspace> {
     mcpCredentials: (mcpCredentialsResult.data ?? []) as McpCredential[],
     projectAccess: projectAccessResult.data as ProjectAccess | null,
     incomingInvitations: (incomingInvitationsResult.data ?? []) as IncomingInvitation[],
+    referrals: referralsResult.data as ReferralOverview,
     harness,
     harnessVersion: harnessVersionResult.data as HarnessVersion | null,
     harnessHistory: (harnessHistoryResult.data ?? []) as ProjectHarnessVersion[],
     plans: (plansResult.data ?? []) as Plan[],
     subscription: subscriptionResult.data as Subscription | null,
   };
+}
+
+export async function reserveReferralSignup(email: string, code: string) {
+  const { data, error } = await requireClient().rpc("reserve_referral_signup", {
+    p_email: email,
+    p_code: code,
+  });
+  if (error) throw error;
+  return data as string;
 }
 
 export async function recordSecuritySessionEvent(event: "sign_in" | "mfa_verified" | "sign_out") {

@@ -286,6 +286,17 @@ code { padding: 3px 6px; border: 1px solid var(--border); border-radius: 4px; ba
 .memberRow .userAvatar, .pendingAvatar { width: 34px; height: 34px; }
 .pendingAvatar { display: grid; place-items: center; border: 1px dashed var(--border); border-radius: 50%; background: var(--muted); color: var(--muted-foreground); }
 .pendingMember { background: var(--muted); }
+.referralPanel { margin-bottom: 24px; padding: 16px; border: 1px solid var(--border); border-radius: var(--radius); }
+.referralShare { display: grid; grid-template-columns: minmax(180px,.35fr) minmax(280px,1fr); gap: 10px; }
+.referralShare > label { display: grid; gap: 6px; min-width: 0; font-size: .75rem; font-weight: 600; }
+.referralShare > label > div { display: grid; grid-template-columns: minmax(0,1fr) 36px; gap: 6px; align-items: center; }
+.referralShare code { display: flex; align-items: center; min-height: 40px; overflow: hidden; padding: 0 11px; text-overflow: ellipsis; white-space: nowrap; }
+.referralList { display: grid; margin-top: 14px; border-top: 1px solid var(--border); }
+.referralRow { display: grid; grid-template-columns: 34px minmax(0,1fr) auto; gap: 10px; align-items: center; min-height: 58px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+.referralRow > div { display: grid; gap: 3px; min-width: 0; }
+.referralRow small, .referralRow time { color: var(--muted-foreground); font-size: .75rem; }
+.referralRow small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.referralList .emptyState { margin-top: 14px; }
 .mcpEndpoint { display: grid; grid-template-columns: auto minmax(0,1fr) auto; gap: 8px; align-items: center; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius); font-size: .8125rem; }
 .mcpEndpoint > span { color: var(--muted-foreground); font-weight: 600; }
 .mcpEndpoint code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -426,6 +437,7 @@ legend { padding: 0 4px; font-size: .8125rem; font-weight: 600; }
   .dataRow > .button { grid-column: 2; justify-self: start; }
   .dataRow > .iconButton { grid-column: 3; grid-row: 1; }
   .inviteForm { grid-template-columns: 1fr; }
+  .referralShare { grid-template-columns: 1fr; }
   .secretReveal .iconButton { justify-self: end; }
   .qrBlock { grid-template-columns: 1fr; }
   .limitRow { grid-template-columns: 1fr 1fr; }

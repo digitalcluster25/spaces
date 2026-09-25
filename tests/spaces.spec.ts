@@ -14,7 +14,11 @@ test("landing page presents Spaces product and auth entry points", async ({ page
 test("auth screens are available", async ({ page }) => {
   await page.goto("/register");
   await expect(page.getByRole("heading", { name: "Создать аккаунт Spaces" })).toBeVisible();
+  await expect(page.getByLabel("Реферальный код")).toBeVisible();
   await expect(page.getByRole("button", { name: "Продолжить с Google" })).toBeVisible();
+
+  await page.goto("/register?ref=abc123");
+  await expect(page.getByLabel("Реферальный код")).toHaveValue("abc123");
 
   await page.goto("/login");
   await expect(page.getByRole("heading", { name: "Вход в Spaces" })).toBeVisible();

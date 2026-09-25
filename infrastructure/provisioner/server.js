@@ -105,6 +105,9 @@ async function sendAuthEmail(path, redirectTo, body) {
 async function processInvitation(invitation) {
   const redirectTo = `${spacesPublicUrl}/invite?invitation=${encodeURIComponent(invitation.invitation_id)}`;
   try {
+    if (!invitation.user_exists) {
+      await rpc("prepare_project_invitation_signup", { p_invitation_id: invitation.invitation_id });
+    }
     if (invitation.user_exists) {
       await sendAuthEmail("otp", redirectTo, {
         email: invitation.email,
