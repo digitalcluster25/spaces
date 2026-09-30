@@ -19,7 +19,8 @@ const config = {
   ssoSlug: process.env.PACA_SSO_SLUG || "spaces",
 };
 
-const ROLE_BY_SPACES_ROLE = { owner: "PROJECT_OWNER", member: "PROJECT_MEMBER" };
+// Built-in Paca project roles: Admin, Editor, Viewer.
+const ROLE_BY_SPACES_ROLE = { owner: "Admin", member: "Editor" };
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function httpError(status, message) {
@@ -124,7 +125,7 @@ function createPaca(fetchImpl = fetch) {
   async function ensureMember(projectId, userId, spacesRole) {
     const roleName = ROLE_BY_SPACES_ROLE[spacesRole] || ROLE_BY_SPACES_ROLE.member;
     const roles = await call("GET", `/projects/${projectId}/roles`);
-    const role = (roles?.items || roles || []).find((item) => item.name === roleName);
+    const role = (roles?.items || roles || []).find((item) => (item.role_name || item.name) === roleName);
     if (!role) throw httpError(502, `Paca project role ${roleName} is missing`);
     const members = await call("GET", `/projects/${projectId}/members?page_size=100`);
     const existing = (members?.items || members || []).find((member) => member.user_id === userId);
@@ -136,7 +137,7 @@ function createPaca(fetchImpl = fetch) {
   async function removeHumanMembers(projectId) {
     const members = await call("GET", `/projects/${projectId}/members?page_size=100`);
     for (const member of members?.items || members || []) {
-      if (member.member_type === "user") await call("DELETE", `/projects/${projectId}/members/${member.id}`);
+      if (member.member_type === "human") await call("DELETE", `/projects/${projectId}/members/${member.id}`);
     }
   }
 

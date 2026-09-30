@@ -33,10 +33,11 @@ function fakePaca(state) {
       state.projects.push(created);
       return ok(created, 201);
     }
-    if (pathname === `/api/v1/projects/${pacaProject}/roles`) return ok({ items: [{ id: "r-owner", name: "PROJECT_OWNER" }, { id: "r-member", name: "PROJECT_MEMBER" }] });
-    if (pathname === `/api/v1/projects/${pacaProject}/members` && method === "GET") return ok({ items: state.members });
+    // Shapes as returned by Paca 0.18: plain arrays, role_name, member_type "human".
+    if (pathname === `/api/v1/projects/${pacaProject}/roles`) return ok([{ id: "r-owner", role_name: "Admin" }, { id: "r-member", role_name: "Editor" }, { id: "r-viewer", role_name: "Viewer" }]);
+    if (pathname === `/api/v1/projects/${pacaProject}/members` && method === "GET") return ok(state.members);
     if (pathname === `/api/v1/projects/${pacaProject}/members` && method === "POST") {
-      state.members.push({ id: "m1", ...JSON.parse(init.body), member_type: "user" });
+      state.members.push({ id: "m1", ...JSON.parse(init.body), member_type: "human" });
       return ok(state.members.at(-1), 201);
     }
     if (pathname.startsWith(`/api/v1/projects/${pacaProject}/members/`) && method === "DELETE") return ok({});
@@ -76,7 +77,7 @@ test("provision adopts the Paca project only by stored Spaces project id", async
 
 test("archive removes human members, delete removes the project, unknown project is a no-op", async () => {
   const state = newState();
-  state.members.push({ id: "m9", member_type: "user" }, { id: "a1", member_type: "agent" });
+  state.members.push({ id: "m9", member_type: "human" }, { id: "a1", member_type: "agent" });
   const paca = createPaca(fakePaca(state));
   await provision({ operation: "archive", project: { id: spacesProject, name: "Spaces" } }, paca);
   assert.ok(state.calls.includes(`DELETE /api/v1/projects/${pacaProject}/members/m9`));
