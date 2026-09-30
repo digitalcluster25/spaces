@@ -17,6 +17,24 @@ body {
   background: #fff;
 }
 
+/* Paca fills the viewport (100svh/100dvh); shrink it by the panel height. */
+#root {
+  height: calc(100dvh - var(--spaces-tenant-height));
+  overflow: hidden;
+}
+
+#root .h-screen,
+#root .h-dvh,
+#root .h-svh {
+  height: calc(100dvh - var(--spaces-tenant-height)) !important;
+}
+
+#root .min-h-screen,
+#root .min-h-dvh,
+#root .min-h-svh {
+  min-height: calc(100dvh - var(--spaces-tenant-height)) !important;
+}
+
 @media print {
   body { padding-top: 0 !important; }
   #spaces-tenant-frame { display: none; }
