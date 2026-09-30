@@ -70,3 +70,12 @@ test("invalid project invitation link is rejected", async ({ page }) => {
   await page.goto("/invite");
   await expect(page.getByRole("heading", { name: "Приглашение недоступно" })).toBeVisible();
 });
+
+test("OAuth consent page sends signed-out users to Spaces login and rejects empty requests", async ({ page }) => {
+  await page.goto("/oauth/consent");
+  await expect(page.getByRole("heading", { name: "Вход не выполнен" })).toBeVisible();
+
+  await page.goto("/oauth/consent?authorization_id=test-authorization");
+  await expect(page).toHaveURL(/\/login\?redirect=%2Foauth%2Fconsent%3Fauthorization_id%3Dtest-authorization$/);
+  await expect(page.getByRole("heading", { name: "Вход в Spaces" })).toBeVisible();
+});

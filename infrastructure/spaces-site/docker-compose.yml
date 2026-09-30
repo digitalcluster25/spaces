@@ -65,6 +65,50 @@ services:
       - "traefik.http.routers.spaces-mcp.tls.certresolver=letsencrypt"
       - "traefik.http.services.spaces-mcp.loadbalancer.server.port=3000"
 
+  tasks-sso:
+    image: node:22-alpine
+    container_name: spaces-tasks-sso
+    restart: unless-stopped
+    env_file:
+      - /opt/spaces/tasks-sso.env
+    environment:
+      - PORT=3000
+      - PACA_INTERNAL_URL=http://gateway:80
+    command: ["node", "/app/server.js"]
+    volumes:
+      - /opt/spaces/repo/infrastructure/tasks-spaces-sso/server.js:/app/server.js:ro
+      - /opt/spaces/repo/infrastructure/tasks-spaces-sso/package.json:/app/package.json:ro
+      - /opt/spaces/repo/infrastructure/shared:/spaces-shared:ro
+    networks:
+      - default
+      - paca
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.tasks-spaces-sso.rule=Host(`tasks.spaces.community`) && (PathPrefix(`/spaces-sso`) || Path(`/spaces-panel`))"
+      - "traefik.http.routers.tasks-spaces-sso.entrypoints=websecure"
+      - "traefik.http.routers.tasks-spaces-sso.priority=10000"
+      - "traefik.http.routers.tasks-spaces-sso.tls.certresolver=letsencrypt"
+      - "traefik.http.services.tasks-spaces-sso.loadbalancer.server.port=3000"
+      - "traefik.docker.network=paca_default"
+  tasks-shell:
+    image: nginx:1.27-alpine
+    container_name: spaces-tasks-shell
+    restart: unless-stopped
+    volumes:
+      - /opt/spaces/repo/infrastructure/tasks-spaces-sso/nginx.conf:/etc/nginx/nginx.conf:ro
+      - /opt/spaces/repo/infrastructure/tasks-spaces-sso/spaces-shell.css:/usr/share/nginx/html/spaces-shell.css:ro
+      - /opt/spaces/repo/infrastructure/tasks-spaces-sso/spaces-shell.js:/usr/share/nginx/html/spaces-shell.js:ro
+    networks:
+      - paca
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.tasks-spaces-shell.rule=Host(`tasks.spaces.community`)"
+      - "traefik.http.routers.tasks-spaces-shell.entrypoints=websecure"
+      - "traefik.http.routers.tasks-spaces-shell.priority=1000"
+      - "traefik.http.routers.tasks-spaces-shell.tls.certresolver=letsencrypt"
+      - "traefik.http.services.tasks-spaces-shell.loadbalancer.server.port=80"
+      - "traefik.docker.network=paca_default"
+
 networks:
   outline:
     external: true
@@ -72,3 +116,6 @@ networks:
   openseo:
     external: true
     name: openseo_default
+  paca:
+    external: true
+    name: paca_default

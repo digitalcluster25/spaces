@@ -96,7 +96,7 @@ import {
   type Service,
   type Workspace,
 } from "./platform";
-import { requiresSuperadminMfa } from "./security";
+import { isTrustedOAuthRedirect, requiresSuperadminMfa } from "./security";
 
 type AuthMode = "login" | "register" | "forgot";
 type HarnessView = "admin" | "user" | "effective" | "history";
@@ -264,6 +264,8 @@ function AppContent({
         <InvitationPage session={session} authLoading={authLoading} />
       ) : path === "/account" ? (
         <AccountPage session={session} {...workspaceState} />
+      ) : path === "/oauth/consent" ? (
+        <OAuthConsentPage session={session} authLoading={authLoading} />
       ) : path === "/reset-password" ? (
         <ResetPasswordPage />
       ) : path === "/privacy" ? (
@@ -617,6 +619,60 @@ function InvitationPage({ session, authLoading }: { session: Session | null; aut
   if (!session) return <StatePage title="Войдите в Spaces" text="Используйте тот email, на который отправлено приглашение." action={<div className="inlineActions"><a className="button buttonPrimary" href={`/login?redirect=${encodeURIComponent(redirect)}`}>Войти</a><a className="button buttonOutline" href={`/register?redirect=${encodeURIComponent(redirect)}`}>Создать аккаунт</a></div>} />;
   if (message) return <StatePage title="Не удалось принять приглашение" text={message} action={<a className="button buttonOutline" href="/account">К проектам</a>} />;
   return <StatePage loading title="Добавляем в проект" text="Проверяем email и права доступа." />;
+}
+
+function OAuthConsentPage({ session, authLoading }: { session: Session | null; authLoading: boolean }) {
+  const [details, setDetails] = React.useState<{ id: string; client: string; redirectUri: string; scope: string } | null>(null);
+  const [error, setError] = React.useState("");
+  const [working, setWorking] = React.useState(false);
+  const started = React.useRef(false);
+  const authorizationId = new URLSearchParams(window.location.search).get("authorization_id") || "";
+
+  React.useEffect(() => {
+    if (authLoading || started.current) return;
+    if (!authorizationId) return setError("Запрос авторизации не найден.");
+    if (!session) {
+      window.location.replace(`/login?redirect=${encodeURIComponent(`/oauth/consent?authorization_id=${authorizationId}`)}`);
+      return;
+    }
+    if (!supabase) return setError("Авторизация не подключена.");
+    started.current = true;
+    const client = supabase;
+    void (async () => {
+      const { data, error: detailsError } = await client.auth.oauth.getAuthorizationDetails(authorizationId);
+      if (detailsError || !data) return setError("Запрос авторизации устарел. Откройте сервис из Spaces ещё раз.");
+      if (!("authorization_id" in data)) return window.location.replace(data.redirect_url);
+      if (isTrustedOAuthRedirect(data.redirect_uri)) {
+        const { data: approved, error: approveError } = await client.auth.oauth.approveAuthorization(authorizationId, { skipBrowserRedirect: true });
+        if (approveError || !approved?.redirect_url) return setError("Не удалось подтвердить вход.");
+        return window.location.replace(approved.redirect_url);
+      }
+      setDetails({ id: data.authorization_id, client: data.client.name || "Приложение", redirectUri: data.redirect_uri, scope: data.scope });
+    })().catch(() => setError("Не удалось обработать запрос авторизации."));
+  }, [authLoading, authorizationId, session]);
+
+  async function decide(approve: boolean) {
+    if (!supabase || !details) return;
+    setWorking(true);
+    const result = approve
+      ? await supabase.auth.oauth.approveAuthorization(details.id, { skipBrowserRedirect: true })
+      : await supabase.auth.oauth.denyAuthorization(details.id, { skipBrowserRedirect: true });
+    if (result.error || !result.data?.redirect_url) {
+      setWorking(false);
+      return setError("Не удалось сохранить решение.");
+    }
+    window.location.replace(result.data.redirect_url);
+  }
+
+  if (error) return <StatePage title="Вход не выполнен" text={error} action={<a className="button buttonPrimary" href="/account">В аккаунт</a>} />;
+  if (!details) return <StatePage loading title="Входим в сервис" text="Подтверждаем единую сессию Spaces." />;
+  return (
+    <StatePage
+      title={`Разрешить вход в ${details.client}?`}
+      text={`Приложение получит ваш email и профиль Spaces (${details.scope}). Адрес возврата: ${new URL(details.redirectUri).host}.`}
+      action={<div className="inlineActions"><button className="button buttonPrimary" disabled={working} onClick={() => void decide(true)}>Разрешить</button><button className="button buttonOutline" disabled={working} onClick={() => void decide(false)}>Отказать</button></div>}
+    />
+  );
 }
 
 function StatePage({ title, text, action, loading }: { title: string; text: string; action?: React.ReactNode; loading?: boolean }) {

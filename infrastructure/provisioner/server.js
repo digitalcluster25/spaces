@@ -7,6 +7,10 @@ const adapters = {
     url: process.env.OUTLINE_PROVISION_URL || "https://outline.spaces.community/spaces-internal/provision",
     secret: process.env.OUTLINE_SERVICE_SECRET,
   },
+  tasks: {
+    url: process.env.TASKS_PROVISION_URL || "http://tasks-sso:3000/spaces-internal/provision",
+    secret: process.env.TASKS_SERVICE_SECRET,
+  },
   openseo: {
     url: process.env.OPENSEO_PROVISION_URL || "https://openseo.spaces.community/api/spaces/provision",
     secret: process.env.OPENSEO_SERVICE_SECRET,
