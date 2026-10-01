@@ -1,5 +1,5 @@
 # SPC-0018 restricted agent runner. The dispatcher runs as root inside the
-# container (holds Paca/Outline/deploy keys); Claude Code runs as pwuser (uid 1000)
+# container (holds Paca/Outline/deploy keys); Claude Code runs as pwuser (uid 1001)
 # with an allowlist of tools and no access to those keys.
 FROM mcr.microsoft.com/playwright:v1.62.1-noble
 RUN apt-get update \

@@ -39,8 +39,9 @@ const config = {
   deployKey: env.DEPLOY_KEY_PATH || "/run/agent-secrets/deploy_key",
   knownHosts: env.KNOWN_HOSTS_PATH || "/run/agent-secrets/known_hosts",
   workRoot: env.WORK_ROOT || "/work",
-  agentUid: Number(env.AGENT_UID || 1000),
-  agentGid: Number(env.AGENT_GID || 1000),
+  // pwuser in the Playwright noble image is uid/gid 1001.
+  agentUid: Number(env.AGENT_UID || 1001),
+  agentGid: Number(env.AGENT_GID || 1001),
   agentHome: env.AGENT_HOME || "/home/pwuser",
   agentMinutes: Number(env.AGENT_MAX_MINUTES || 90),
   maxTurns: Number(env.AGENT_MAX_TURNS || 200),
@@ -302,6 +303,7 @@ async function processTask(taskId, clients) {
     const agent = await run("claude", [
       "-p", "--output-format", "json",
       "--permission-mode", "dontAsk",
+      "--permission-prompts", "none",
       "--allowedTools", ALLOWED_TOOLS.join(","),
       "--disallowedTools", DISALLOWED_TOOLS.join(","),
       "--settings", settingsPath,
