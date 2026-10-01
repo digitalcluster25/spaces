@@ -23,7 +23,7 @@ status() {
   python3 - "$1" "$2" "$3" > "$base/site/preview-status.json.tmp" <<'EOF'
 import json, sys, datetime
 print(json.dumps({"revision": sys.argv[1], "ok": sys.argv[2] == "true", "error": sys.argv[3][-3000:],
-                  "updated_at": datetime.datetime.utcnow().isoformat() + "Z"}, ensure_ascii=False))
+                  "updated_at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}, ensure_ascii=False))
 EOF
   mv "$base/site/preview-status.json.tmp" "$base/site/preview-status.json"
 }
