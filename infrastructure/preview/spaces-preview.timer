@@ -1,0 +1,10 @@
+[Unit]
+Description=Check branch stage for a new preview every minute
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=1min
+Unit=spaces-preview.service
+
+[Install]
+WantedBy=timers.target

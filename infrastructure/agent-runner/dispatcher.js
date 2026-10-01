@@ -39,9 +39,11 @@ const config = {
   deployKey: env.DEPLOY_KEY_PATH || "/run/agent-secrets/deploy_key",
   knownHosts: env.KNOWN_HOSTS_PATH || "/run/agent-secrets/known_hosts",
   workRoot: env.WORK_ROOT || "/work",
-  // pwuser in the Playwright noble image is uid/gid 1001.
-  agentUid: Number(env.AGENT_UID || 1001),
-  agentGid: Number(env.AGENT_GID || 1001),
+  // pwuser is remapped in the image to uid/gid 20001 — no such user on the host.
+  agentUid: Number(env.AGENT_UID || 20001),
+  agentGid: Number(env.AGENT_GID || 20001),
+  previewUrl: (env.PREVIEW_URL || "https://preview.spaces.community").replace(/\/$/, ""),
+  previewMinutes: Number(env.PREVIEW_MAX_MINUTES || 20),
   agentHome: env.AGENT_HOME || "/home/pwuser",
   agentMinutes: Number(env.AGENT_MAX_MINUTES || 90),
   maxTurns: Number(env.AGENT_MAX_TURNS || 200),
@@ -70,6 +72,8 @@ const DISALLOWED_TOOLS = [
 // Changes here are flagged for the owner's attention in the review comment.
 const SENSITIVE_PATHS = [/^supabase\//, /^infrastructure\//, /^scripts\//, /^\.github\//, /^package(-lock)?\.json$/, /^AGENTS\.md$/, /^harness\//];
 const BRANCH_PATTERN = /^spc-\d+$/;
+// The only other branch the runner writes: preview = main + the current task (SPC-0020).
+const STAGE_BRANCH = "stage";
 const AGENT_NAME = "Spaces agent (Claude Code)";
 const AGENT_EMAIL = "agents@spaces.community";
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -358,11 +362,23 @@ async function processTask(taskId, clients) {
       extraEnv: { GIT_SSH_COMMAND: `ssh -i ${config.deployKey} -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=${config.knownHosts}` },
     }));
 
+    // Preview: stage := this task (it is rebuilt for every task, hence --force on this one branch only).
+    const sha = (await must("rev-parse", run("git", ["rev-parse", "HEAD"], { cwd: pushDir }))).stdout.trim();
+    await must("push stage", run("git", [...GIT_SAFE, "push", "--force", config.pushUrl, `HEAD:refs/heads/${STAGE_BRANCH}`], {
+      cwd: pushDir,
+      timeoutMs: 300000,
+      extraEnv: { GIT_SSH_COMMAND: `ssh -i ${config.deployKey} -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=${config.knownHosts}` },
+    }));
+    const preview = await waitForPreview(sha);
+
     const flagged = sensitiveFiles(files);
     const compare = `${config.compareBase}${branch}`;
     const message = [
       `Готово к проверке владельцем. Ветка ${branch}, коммитов: ${count}.`,
-      `Сравнение и создание PR: ${compare}`,
+      preview.ok
+        ? `Превью (стейдж-база, миграции применены): ${config.previewUrl}`
+        : `Превью НЕ обновилось: ${preview.error}`,
+      `Сравнение изменений: ${compare}`,
       "Повторно проверено диспетчером: npm run build, unit-тесты (harness, billing, mcp, tasks, security). Playwright e2e диспетчер не запускает.",
       flagged.length ? `Внимание, изменены чувствительные файлы: ${flagged.join(", ")}` : "Чувствительные файлы (supabase/, infrastructure/, scripts/, package*.json, harness/, AGENTS.md) не менялись.",
       "Слияние в main и проверку продакшена делает владелец, затем карточка → «Готово».",
@@ -384,6 +400,24 @@ async function processTask(taskId, clients) {
     // Keep the last runs for inspection; drop node_modules to save disk.
     fs.rmSync(path.join(repoDir, "node_modules"), { recursive: true, force: true });
   }
+}
+
+// Waits until preview-deploy.sh on the host has published `sha` (or reported a failure for it).
+async function waitForPreview(sha, { fetchImpl = fetch, sleep = (ms) => new Promise((r) => setTimeout(r, ms)), minutes = config.previewMinutes, intervalMs = 20000 } = {}) {
+  const deadline = Date.now() + minutes * 60 * 1000;
+  while (Date.now() < deadline) {
+    try {
+      const response = await fetchImpl(`${config.previewUrl}/preview-status.json?t=${Date.now()}`, { headers: { "Cache-Control": "no-cache" } });
+      if (response.ok) {
+        const status = await response.json();
+        if (status.revision === sha) return { ok: Boolean(status.ok), error: status.ok ? "" : String(status.error || "ошибка превью").slice(0, 2000) };
+      }
+    } catch (error) {
+      log("preview poll failed", error.message);
+    }
+    await sleep(intervalMs);
+  }
+  return { ok: false, error: `превью не обновилось за ${minutes} мин` };
 }
 
 async function checkpoint(clients, specId, title, body) {
@@ -461,5 +495,5 @@ if (require.main === module) {
 
 module.exports = {
   blocksToText, textToBlocks, findSpecDocId, sensitiveFiles, parseAgentResult, buildPrompt, safeEqual,
-  createClients, createQueue, createServer, ALLOWED_TOOLS, DISALLOWED_TOOLS, BRANCH_PATTERN, config,
+  createClients, createQueue, createServer, waitForPreview, ALLOWED_TOOLS, DISALLOWED_TOOLS, BRANCH_PATTERN, STAGE_BRANCH, config,
 };

@@ -68,3 +68,16 @@ test("hook requires the secret and a task id; duplicates are not queued twice", 
     server.close();
   }
 });
+
+test("preview wait matches the pushed revision and reports failures", async () => {
+  const sha = "a".repeat(40);
+  const responses = [{ revision: "old", ok: true }, { revision: sha, ok: false, error: "build: boom" }];
+  const fetchImpl = async () => ({ ok: true, json: async () => responses.shift() || { revision: sha, ok: true } });
+  const sleep = async () => {};
+  assert.deepEqual(await runner.waitForPreview(sha, { fetchImpl, sleep }), { ok: false, error: "build: boom" });
+  assert.deepEqual(await runner.waitForPreview(sha, { fetchImpl, sleep }), { ok: true, error: "" });
+  const never = await runner.waitForPreview(sha, { fetchImpl: async () => ({ ok: false }), sleep: async () => {}, minutes: 0 });
+  assert.equal(never.ok, false);
+  assert.equal(runner.STAGE_BRANCH, "stage");
+  assert.ok(!runner.BRANCH_PATTERN.test(runner.STAGE_BRANCH));
+});

@@ -1,0 +1,17 @@
+# SPC-0020: https://preview.spaces.community — static site of branch `stage`,
+# published by preview-deploy.sh into /opt/spaces/preview/site.
+name: spaces-preview
+services:
+  preview-site:
+    image: nginx:alpine
+    container_name: spaces-preview-site
+    restart: unless-stopped
+    volumes:
+      - /opt/spaces/preview/site:/usr/share/nginx/html:ro
+      - /opt/spaces/repo/infrastructure/preview/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.spaces-preview.rule=Host(`preview.spaces.community`)"
+      - "traefik.http.routers.spaces-preview.entrypoints=websecure"
+      - "traefik.http.routers.spaces-preview.tls.certresolver=letsencrypt"
+      - "traefik.http.services.spaces-preview.loadbalancer.server.port=80"
