@@ -95,3 +95,32 @@ test("old run directories are removed, recent and foreign ones are kept", () => 
   assert.deepEqual(fs.readdirSync(root).sort(), ["keep-me", "spc-2-200"]);
   fs.rmSync(root, { recursive: true, force: true });
 });
+
+test("acceptance: only the latest status change to «Принято» counts, by its actor", () => {
+  const change = (actor, at, status) => ({ activity_type: "task.updated", actor_id: actor, created_at: at, content: { changes: [{ field: "status", new: status }] } });
+  const comment = { activity_type: "comment", actor_id: "x", created_at: "2026-10-02T10:00:00Z", content: [] };
+  assert.equal(runner.lastStatusChangeActor([change("owner", "2026-10-02T09:00:00Z", "Принято"), comment], "Принято"), "owner");
+  assert.equal(runner.lastStatusChangeActor([change("owner", "2026-10-02T09:00:00Z", "Принято"), change("bot", "2026-10-02T09:30:00Z", "В процессе")], "Принято"), null);
+  // order of the API response must not matter
+  assert.equal(runner.lastStatusChangeActor([change("intruder", "2026-10-02T09:30:00Z", "Принято"), change("owner", "2026-10-02T09:00:00Z", "На утверждение")], "Принято"), "intruder");
+  assert.equal(runner.lastStatusChangeActor([], "Принято"), null);
+});
+
+test("acceptance: release status and production check", async () => {
+  const sha = "b".repeat(40);
+  const statuses = [null, { revision: "old", ok: true }, { revision: sha, ok: false, stage: "migrations", error: "exit 1", backup: "x.spcbak" }];
+  const release = await runner.waitForRelease(sha, { read: () => statuses.shift(), sleep: async () => {} });
+  assert.deepEqual(release, { ok: false, stage: "migrations", error: "exit 1", backup: "x.spcbak" });
+  assert.equal((await runner.waitForRelease(sha, { read: () => null, sleep: async () => {}, minutes: 0 })).stage, "timeout");
+
+  const site = (bundleText) => async (url) => {
+    if (url.includes("/assets/")) return { ok: true, status: 200, text: async () => bundleText };
+    return { ok: true, status: 200, text: async () => '<script type="module" src="/assets/index-AbC.js"></script>' };
+  };
+  assert.deepEqual(await runner.checkProduction(sha, { fetchImpl: site(`x="${sha.slice(0, 12)}"`) }), { ok: true, error: "" });
+  assert.equal((await runner.checkProduction(sha, { fetchImpl: site('x="000000000000"') })).ok, false);
+  assert.equal((await runner.checkProduction(sha, { fetchImpl: async () => ({ ok: false, status: 502 }) })).error, "/ → HTTP 502");
+  let calls = 0;
+  const eventually = await runner.waitForProduction(sha, { check: async () => ({ ok: ++calls === 3, error: "x" }), sleep: async () => {} });
+  assert.equal(eventually.ok, true);
+});

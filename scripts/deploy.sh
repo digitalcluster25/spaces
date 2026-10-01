@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -Eeuo pipefail
 
 repo_dir="/opt/spaces/repo"
 site_dir="/opt/spaces/site"
@@ -18,6 +18,72 @@ deployed=""
 if [ -f "$revision_file" ]; then
   deployed="$(cat "$revision_file")"
 fi
+
+# SPC-0020: release status for the agent runner (read-only mount), and production
+# migrations applied here — the only place that holds production DB credentials.
+release_dir="/opt/spaces/release-status"
+failed_file="/opt/spaces/failed-revision"
+install -d -m 0755 "$release_dir"
+release_stage="idle"
+release_backup=""
+release_status() {
+  python3 - "$1" "$2" "$3" "$4" "$release_backup" > "$release_dir/status.json.tmp" <<'PY'
+import json, sys, datetime
+print(json.dumps({"revision": sys.argv[1], "ok": sys.argv[2] == "true", "stage": sys.argv[3],
+                  "error": sys.argv[4][-2000:], "backup": sys.argv[5],
+                  "updated_at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}, ensure_ascii=False))
+PY
+  mv "$release_dir/status.json.tmp" "$release_dir/status.json"
+}
+on_release_error() {
+  local code=$?
+  case "$release_stage" in
+    idle|done) ;;
+    backup|migrations)
+      # Never retry a failed backup/migration every minute: wait for a new commit.
+      release_status "$remote" false "$release_stage" "exit $code"
+      printf '%s\n' "$remote" > "$failed_file" ;;
+    *) release_status "$remote" false "$release_stage" "exit $code" ;;
+  esac
+}
+trap on_release_error ERR
+
+apply_production_migrations() {
+  local envfile applied pending version
+  envfile="$(mktemp)"
+  chmod 600 "$envfile"
+  # operations.env is not shell-safe (values with spaces): read keys, never source it.
+  python3 - /opt/spaces/operations.env > "$envfile" <<'PY'
+import sys, urllib.parse as u
+env = {}
+for line in open(sys.argv[1], encoding="utf-8"):
+    line = line.rstrip("\n")
+    if "=" in line and not line.lstrip().startswith("#"):
+        key, value = line.split("=", 1)
+        env[key.strip()] = value.strip().strip('"').strip("'")
+h, p, user, db, pw = (env[k] for k in ("SUPABASE_DB_HOST", "SUPABASE_DB_PORT", "SUPABASE_DB_USER", "SUPABASE_DB_NAME", "SUPABASE_DB_PASSWORD"))
+print(f"PGHOST={h}\nPGPORT={p}\nPGUSER={user}\nPGDATABASE={db}\nPGPASSWORD={pw}")
+print(f"DB_URL=postgresql://{u.quote(user, safe='')}:{u.quote(pw, safe='')}@{h}:{p}/{db}")
+PY
+  applied="$(docker run --rm --env-file "$envfile" postgres:17-alpine psql -tAc "select version from supabase_migrations.schema_migrations")"
+  pending=""
+  for version in $(ls "$repo_dir/supabase/migrations" | sed 's/_.*//'); do
+    grep -qx "$version" <<<"$applied" || pending="$pending $version"
+  done
+  if [ -n "$pending" ]; then
+    release_stage="backup"
+    systemctl start spaces-backup.service
+    release_backup="$( (ls -t /opt/spaces/backups/*.spcbak 2>/dev/null || true) | head -1 | xargs -r basename)"
+    release_stage="migrations"
+    local work
+    work="$(mktemp -d)"
+    cp -r "$repo_dir/supabase" "$work/"
+    docker run --rm --env-file "$envfile" -v "$work/supabase:/w/supabase" -w /w node:22-alpine \
+      sh -c 'npx -y supabase@2.90.0 db push --db-url "$DB_URL" --yes'
+    rm -rf "$work"
+  fi
+  rm -f "$envfile"
+}
 
 if [ ! -f /opt/spaces/data-plane.env ]; then
   install -m 0600 /dev/null /opt/spaces/data-plane.env
@@ -47,17 +113,24 @@ if [ ! -f /opt/spaces/tasks-sso.env ]; then
   install -m 0600 /dev/null /opt/spaces/tasks-sso.env
 fi
 
-if [ "$deployed" != "$remote" ] || [ ! -f "$site_dir/index.html" ]; then
+if { [ "$deployed" != "$remote" ] || [ ! -f "$site_dir/index.html" ]; } && [ "$remote" != "$(cat "$failed_file" 2>/dev/null || true)" ]; then
   git reset --hard origin/main
+  release_stage="migrations-check"
+  apply_production_migrations
+  release_stage="build"
   if [ ! -d node_modules ]; then
     npm ci --no-audit --no-fund
   fi
   npm run build
+  release_stage="publish"
   rsync -a --delete dist/ "$site_dir/"
   install -m 0644 infrastructure/spaces-site/docker-compose.yml /opt/spaces/docker-compose.yml
   install -m 0644 infrastructure/spaces-site/nginx.conf /opt/spaces/nginx.conf
   docker compose -f /opt/spaces/docker-compose.yml up -d --force-recreate
+  release_stage="done"
+  release_status "$remote" true "done" ""
 fi
+release_stage="done"
 
 install -m 0644 infrastructure/operations/spaces-monitor.service /etc/systemd/system/spaces-monitor.service
 install -m 0644 infrastructure/operations/spaces-monitor.timer /etc/systemd/system/spaces-monitor.timer

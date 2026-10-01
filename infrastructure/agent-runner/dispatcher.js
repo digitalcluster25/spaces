@@ -53,7 +53,14 @@ const config = {
     backlog: env.STATUS_BACKLOG || "cf2a571c-4f81-489c-9a90-696460f77f85", // Беклог
     inProgress: env.STATUS_IN_PROGRESS || "7a14e900-6069-4814-906f-a83a00577b3e", // В процессе
     stuck: env.STATUS_STUCK || "e9a95f22-4d74-4c42-9f7a-71ea959764c2", // Застрял
+    accepted: env.STATUS_ACCEPTED || "e3968549-7a36-462b-aa64-cca8955ce49a", // Принято
+    done: env.STATUS_DONE || "dd4fbd7f-1f12-42c1-9864-454c720aeb11", // Готово
   },
+  // SPC-0020: only these people may accept (merge + production). Paca users are matched by email.
+  approverEmails: String(env.APPROVER_EMAILS || "digitalcluster25@gmail.com").toLowerCase().split(",").map((s) => s.trim()).filter(Boolean),
+  releaseStatusFile: env.RELEASE_STATUS_FILE || "/run/release-status/status.json",
+  productionUrl: (env.PRODUCTION_URL || "https://spaces.community").replace(/\/$/, ""),
+  releaseMinutes: Number(env.RELEASE_MAX_MINUTES || 30),
 };
 
 // Tools the agent may use. Anything not listed is denied without a prompt.
@@ -193,6 +200,19 @@ function createClients(fetchImpl = fetch) {
     getTask: (id) => paca("GET", `${project}/tasks/${id}`),
     setStatus: (id, statusId) => paca("PATCH", `${project}/tasks/${id}`, { status_id: statusId }),
     comment: (id, text) => paca("POST", `${project}/tasks/${id}/activities/comments`, { content: textToBlocks(text) }),
+    async activities(id) {
+      const data = await paca("GET", `${project}/tasks/${id}/activities`);
+      return Array.isArray(data) ? data : data.items || [];
+    },
+    async approverIds() {
+      const data = await paca("GET", "/admin/users?page_size=100");
+      const users = Array.isArray(data) ? data : data.items || [];
+      const userIds = users.filter((user) => config.approverEmails.includes(String(user.email || "").toLowerCase())).map((user) => user.id);
+      // Activity actor_id is the project member id, not the user id.
+      const membersData = await paca("GET", `${project}/members`);
+      const members = Array.isArray(membersData) ? membersData : membersData.items || [];
+      return members.filter((member) => userIds.includes(member.user_id)).map((member) => member.id);
+    },
     async comments(id) {
       const data = await paca("GET", `${project}/tasks/${id}/activities`);
       const items = Array.isArray(data) ? data : data.items || [];
@@ -271,6 +291,7 @@ const IDENTITY = ["-c", "user.name=Spaces agent runner", "-c", "user.email=agent
 async function processTask(taskId, clients) {
   const task = await clients.getTask(taskId);
   if (task.project_id !== config.pacaProjectId) return log("skip foreign project", taskId);
+  if (task.status_id === config.status.accepted) return processAcceptance(task, clients);
   const rework = task.status_id === config.status.rework;
   if (task.status_id !== config.status.backlog && !rework) return log("skip, status", task.status_id, taskId);
 
@@ -382,7 +403,7 @@ async function processTask(taskId, clients) {
       `Сравнение изменений: ${compare}`,
       "Повторно проверено диспетчером: npm run build, unit-тесты (harness, billing, mcp, tasks, security). Playwright e2e диспетчер не запускает.",
       flagged.length ? `Внимание, изменены чувствительные файлы: ${flagged.join(", ")}` : "Чувствительные файлы (supabase/, infrastructure/, scripts/, package*.json, harness/, AGENTS.md) не менялись.",
-      "Слияние в main и проверку продакшена делает владелец, затем карточка → «Готово».",
+      "Чтобы выкатить: проверьте превью и переведите карточку в «Принято» — раннер сольёт ветку в main, деплой применит миграции и выкатит, раннер проверит продакшен и переведёт в «Готово» (или откатит и переведёт в «Застрял»). Замечания — комментарием и статус «На доработку агенту».",
       "",
       "Отчёт агента:",
       result.summary.slice(0, 6000),
@@ -401,6 +422,169 @@ async function processTask(taskId, clients) {
     // Keep the last runs for inspection; drop node_modules to save disk.
     fs.rmSync(path.join(repoDir, "node_modules"), { recursive: true, force: true });
   }
+}
+
+// --- Acceptance (SPC-0020) --------------------------------------------------------------
+// «Принято» by an approver → merge spc-<N> into main (checked again on the merged tree)
+// → production deploy by scripts/deploy.sh on the host (migrations + backup live there)
+// → production check → «Готово». On failure: revert main to the previous tree → «Застрял».
+
+// actor of the latest status change, if that change was to `statusName`
+function lastStatusChangeActor(activities, statusName) {
+  const newestFirst = [...activities].sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+  for (const item of newestFirst) {
+    if (item.activity_type !== "task.updated") continue;
+    const change = (item.content?.changes || []).find((c) => c.field === "status");
+    if (change) return change.new === statusName ? item.actor_id : null;
+  }
+  return null;
+}
+
+function readReleaseStatus(file = config.releaseStatusFile) {
+  try {
+    return JSON.parse(fs.readFileSync(file, "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+async function waitForRelease(sha, { read = readReleaseStatus, sleep = (ms) => new Promise((r) => setTimeout(r, ms)), minutes = config.releaseMinutes, intervalMs = 15000 } = {}) {
+  const deadline = Date.now() + minutes * 60 * 1000;
+  while (Date.now() < deadline) {
+    const status = read();
+    if (status && status.revision === sha) return { ok: Boolean(status.ok), stage: status.stage || "", error: status.error || "", backup: status.backup || "" };
+    await sleep(intervalMs);
+  }
+  return { ok: false, stage: "timeout", error: `деплой не завершился за ${minutes} мин`, backup: "" };
+}
+
+// Production answers and serves the bundle built from `sha` (vite defines the 12-char revision).
+async function checkProduction(sha, { fetchImpl = fetch } = {}) {
+  const short = sha.slice(0, 12);
+  const base = config.productionUrl;
+  try {
+    for (const page of ["/", "/login"]) {
+      const response = await fetchImpl(`${base}${page}?release=${Date.now()}`);
+      if (!response.ok) return { ok: false, error: `${page} → HTTP ${response.status}` };
+    }
+    const html = await (await fetchImpl(`${base}/?release=${Date.now()}`)).text();
+    const asset = html.match(/\/assets\/index-[^"']+\.js/);
+    if (!asset) return { ok: false, error: "в index.html нет основного бандла" };
+    const bundle = await fetchImpl(`${base}${asset[0]}`);
+    if (!bundle.ok) return { ok: false, error: `${asset[0]} → HTTP ${bundle.status}` };
+    if (!(await bundle.text()).includes(short)) return { ok: false, error: `продакшен отдаёт не ревизию ${short}` };
+    return { ok: true, error: "" };
+  } catch (error) {
+    return { ok: false, error: error.message };
+  }
+}
+
+async function waitForProduction(sha, { check = checkProduction, sleep = (ms) => new Promise((r) => setTimeout(r, ms)), attempts = 10, intervalMs = 30000 } = {}) {
+  let last = { ok: false, error: "не проверялось" };
+  for (let i = 0; i < attempts; i += 1) {
+    last = await check(sha);
+    if (last.ok) return last;
+    await sleep(intervalMs);
+  }
+  return last;
+}
+
+async function processAcceptance(task, clients) {
+  const taskId = task.id;
+  const branch = `spc-${task.task_number}`;
+  if (!BRANCH_PATTERN.test(branch)) throw new Error("bad branch name");
+  const runId = `${branch}-${Date.now()}`;
+  const runDir = path.join(config.workRoot, runId);
+  log("accept", runId);
+
+  const actor = lastStatusChangeActor(await clients.activities(taskId), "Принято");
+  const approvers = await clients.approverIds();
+  if (!actor || !approvers.includes(actor)) {
+    await clients.setStatus(taskId, config.status.review);
+    await clients.comment(taskId, "Принять задачу (слияние в main и выкатка в продакшен) может только владелец проекта. Статус возвращён в «На утверждение».");
+    return log("accept denied", runId, actor);
+  }
+
+  const sshEnv = { GIT_SSH_COMMAND: `ssh -i ${config.deployKey} -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=${config.knownHosts}` };
+  const pushDir = path.join(runDir, "main");
+  const checkDir = path.join(runDir, "check");
+  let previous = "";
+  let merged = "";
+  let pushed = false;
+  try {
+    await clients.comment(taskId, `Принято владельцем. Сливаю ${branch} в main и выкатываю (запуск ${runId}).`);
+    fs.mkdirSync(runDir, { recursive: true, mode: 0o755 });
+    await must("clone main", run("git", ["clone", "--branch", "main", config.repoUrl, pushDir], { timeoutMs: 600000 }));
+    await must(`fetch ${branch}`, run("git", [...GIT_SAFE, "fetch", "origin", `refs/heads/${branch}`], { cwd: pushDir, timeoutMs: 300000 }));
+    previous = (await must("rev-parse", run("git", ["rev-parse", "HEAD"], { cwd: pushDir }))).stdout.trim();
+    const already = await run("git", ["merge-base", "--is-ancestor", "FETCH_HEAD", "HEAD"], { cwd: pushDir });
+    if (already.code === 0) throw new Error(`${branch} уже в main — сливать нечего`);
+    const ff = await run("git", ["merge-base", "--is-ancestor", "HEAD", "FETCH_HEAD"], { cwd: pushDir });
+    const merge = ff.code === 0
+      ? await run("git", [...GIT_SAFE, "merge", "--ff-only", "FETCH_HEAD"], { cwd: pushDir })
+      : await run("git", [...GIT_SAFE, ...IDENTITY, "merge", "--no-ff", "--no-edit", "-m", `Merge ${branch} (SPAC-${task.task_number})`, "FETCH_HEAD"], { cwd: pushDir });
+    if (merge.code !== 0) throw new Error(`конфликт слияния ${branch} с main — нужна доработка\n${tail(merge.stdout + merge.stderr, 15)}`);
+    merged = (await must("rev-parse", run("git", ["rev-parse", "HEAD"], { cwd: pushDir }))).stdout.trim();
+    const files = (await run("git", ["diff", "--name-only", `${previous}..${merged}`], { cwd: pushDir })).stdout.trim().split("\n").filter(Boolean);
+    const migrations = files.filter((file) => /^supabase\/migrations\/.+\.sql$/.test(file));
+
+    // Re-check the exact tree that goes to main, as the unprivileged user, without credentials.
+    fs.mkdirSync(checkDir, { recursive: true, mode: 0o755 });
+    await must("archive", run("sh", ["-c", `git -c safe.directory='*' archive ${merged} | tar -x -C ${checkDir}`], { cwd: pushDir }));
+    await must("chown", run("chown", ["-R", `${config.agentUid}:${config.agentGid}`, checkDir]));
+    await must("npm ci", run("npm", ["ci", "--no-audit", "--no-fund"], { cwd: checkDir, asAgent: true, timeoutMs: 900000, extraEnv: { SPACES_GIT_REVISION: merged.slice(0, 12) } }));
+    await must("npm run build", run("npm", ["run", "build"], { cwd: checkDir, asAgent: true, extraEnv: { SPACES_GIT_REVISION: merged.slice(0, 12) } }));
+    for (const script of ["test:harness", "test:billing", "test:mcp", "test:tasks", "test:security", "test:agents"]) {
+      await must(`npm run ${script}`, run("npm", ["run", "--if-present", script], { cwd: checkDir, asAgent: true }));
+    }
+
+    await must("push main", run("git", [...GIT_SAFE, "push", config.pushUrl, "HEAD:refs/heads/main"], { cwd: pushDir, timeoutMs: 300000, extraEnv: sshEnv }));
+    pushed = true;
+    const release = await waitForRelease(merged);
+    if (!release.ok) throw Object.assign(new Error(`деплой не прошёл (этап ${release.stage}): ${release.error}`), { release });
+    const health = await waitForProduction(merged);
+    if (!health.ok) throw Object.assign(new Error(`продакшен не прошёл проверку: ${health.error}`), { release });
+
+    const message = [
+      `Выкачено в продакшен: ${config.productionUrl} (main ${merged.slice(0, 12)}, было ${previous.slice(0, 12)}).`,
+      migrations.length ? `Миграции применены: ${migrations.map((f) => path.basename(f)).join(", ")}. Резервная копия перед ними: ${release.backup || "—"}.` : "Миграций не было.",
+      "Проверено: деплой завершён, / и /login отвечают, продакшен отдаёт бандл этой ревизии.",
+    ].join("\n");
+    await clients.comment(taskId, message);
+    await checkpoint(clients, findSpecDocId(blocksToText(task.description)), `агент-раннер ${runId}: выкачено`, message);
+    await clients.setStatus(taskId, config.status.done);
+    log("released", runId);
+  } catch (error) {
+    log("accept failed", runId, error.message);
+    let rollback = "";
+    if (pushed && previous) {
+      rollback = await rollbackMain(pushDir, previous, task, sshEnv).catch((e) => `откат не удался: ${e.message}`);
+    }
+    const message = [
+      `Застрял при выкатке: ${error.message}`.slice(0, 3000),
+      pushed ? rollback : "main не менялся, продакшен не затронут.",
+      error.release?.backup ? `Резервная копия базы перед миграциями: ${error.release.backup}. Схему базы автооткат не возвращает — нужно решение владельца.` : "",
+    ].filter(Boolean).join("\n");
+    await clients.comment(taskId, message).catch((e) => log("comment failed", e.message));
+    await checkpoint(clients, findSpecDocId(blocksToText(task.description)), `агент-раннер ${runId}: выкатка не удалась`, message).catch(() => {});
+    await clients.setStatus(taskId, config.status.stuck).catch((e) => log("status failed", e.message));
+  } finally {
+    fs.rmSync(path.join(checkDir, "node_modules"), { recursive: true, force: true });
+  }
+}
+
+// New commit on top of main whose tree is the previous release; never rewrites history.
+async function rollbackMain(pushDir, previous, task, sshEnv) {
+  await must("fetch main", run("git", [...GIT_SAFE, "fetch", "origin", "main"], { cwd: pushDir, timeoutMs: 300000 }));
+  await must("reset", run("git", [...GIT_SAFE, "reset", "--hard", "FETCH_HEAD"], { cwd: pushDir }));
+  const tree = (await must("tree", run("git", ["rev-parse", `${previous}^{tree}`], { cwd: pushDir }))).stdout.trim();
+  const commit = (await must("commit-tree", run("git", [...GIT_SAFE, ...IDENTITY, "commit-tree", tree, "-p", "HEAD", "-m", `Revert SPAC-${task.task_number}: откат к ${previous.slice(0, 12)}`], { cwd: pushDir }))).stdout.trim();
+  await must("push revert", run("git", [...GIT_SAFE, "push", config.pushUrl, `${commit}:refs/heads/main`], { cwd: pushDir, timeoutMs: 300000, extraEnv: sshEnv }));
+  const release = await waitForRelease(commit);
+  const health = release.ok ? await waitForProduction(commit) : { ok: false, error: release.error };
+  return health.ok
+    ? `Автооткат: main возвращён к состоянию ${previous.slice(0, 12)} (коммит ${commit.slice(0, 12)}), продакшен проверен.`
+    : `Автооткат запушен (${commit.slice(0, 12)}), но продакшен после него не прошёл проверку: ${health.error}. Нужно вмешательство.`;
 }
 
 // Run directories are kept for inspection for 7 days.
@@ -510,5 +694,6 @@ if (require.main === module) {
 
 module.exports = {
   blocksToText, textToBlocks, findSpecDocId, sensitiveFiles, parseAgentResult, buildPrompt, safeEqual,
-  createClients, createQueue, createServer, waitForPreview, cleanupOldRuns, ALLOWED_TOOLS, DISALLOWED_TOOLS, BRANCH_PATTERN, STAGE_BRANCH, config,
+  createClients, createQueue, createServer, waitForPreview, cleanupOldRuns,
+  lastStatusChangeActor, waitForRelease, checkProduction, waitForProduction, ALLOWED_TOOLS, DISALLOWED_TOOLS, BRANCH_PATTERN, STAGE_BRANCH, config,
 };

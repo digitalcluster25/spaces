@@ -17,6 +17,8 @@ services:
     volumes:
       - /opt/spaces/agents/work:/work
       - /opt/spaces/agents/secrets:/run/agent-secrets:ro
+      # SPC-0020: production deploy status written by scripts/deploy.sh
+      - /opt/spaces/release-status:/run/release-status:ro
     mem_limit: 4g
     cpus: 1.5
     pids_limit: 2048
