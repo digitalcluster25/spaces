@@ -13,8 +13,9 @@
     "test:mcp": "node --test infrastructure/mcp-gateway/server.test.mjs infrastructure/outline-spaces-sso/memory-adapter.test.cjs infrastructure/data-plane/server.test.mjs infrastructure/operations/operations.test.mjs",
     "test:security": "node --test src/security.test.mjs",
     "test:e2e": "playwright test",
-    "test": "npm run test:harness && npm run test:billing && npm run test:mcp && npm run test:tasks && npm run test:security && npm run test:e2e",
-    "test:tasks": "node --test infrastructure/tasks-spaces-sso/server.test.cjs"
+    "test": "npm run test:harness && npm run test:billing && npm run test:mcp && npm run test:tasks && npm run test:agents && npm run test:security && npm run test:e2e",
+    "test:tasks": "node --test infrastructure/tasks-spaces-sso/server.test.cjs",
+    "test:agents": "node --test infrastructure/agent-runner/dispatcher.test.cjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.54.0",

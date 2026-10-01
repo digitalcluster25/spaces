@@ -1,0 +1,38 @@
+# Separate compose project: `docker compose -p spaces-agents up -d --build`
+# from /opt/spaces/repo/infrastructure/agent-runner. The regular Spaces deploy
+# (scripts/deploy.sh) does not touch it, so a running agent is not killed by deploys.
+name: spaces-agents
+services:
+  agent-runner:
+    build: .
+    image: spaces-agent-runner:local
+    container_name: spaces-agent-runner
+    restart: unless-stopped
+    env_file:
+      - /opt/spaces/agent-runner.env
+    environment:
+      - PORT=3000
+      - PACA_INTERNAL_URL=http://gateway:80
+      - WORK_ROOT=/work
+    volumes:
+      - /opt/spaces/agents/work:/work
+      - /opt/spaces/agents/secrets:/run/agent-secrets:ro
+    mem_limit: 4g
+    cpus: 1.5
+    pids_limit: 2048
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - paca
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.spaces-agents.rule=Host(`tasks.spaces.community`) && PathPrefix(`/spaces-agents/`)"
+      - "traefik.http.routers.spaces-agents.entrypoints=websecure"
+      - "traefik.http.routers.spaces-agents.priority=10000"
+      - "traefik.http.routers.spaces-agents.tls.certresolver=letsencrypt"
+      - "traefik.http.services.spaces-agents.loadbalancer.server.port=3000"
+      - "traefik.docker.network=paca_default"
+networks:
+  paca:
+    external: true
+    name: paca_default
