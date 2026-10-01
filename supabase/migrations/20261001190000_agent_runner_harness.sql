@@ -10,11 +10,11 @@ create table if not exists public.agent_runner_credentials (
 alter table public.agent_runner_credentials enable row level security;
 revoke all on public.agent_runner_credentials from public, anon, authenticated;
 
+-- Only where the Spaces project exists (production); fresh/staging databases skip it.
 insert into public.agent_runner_credentials (project_id, token_hash)
-values (
-  'f1857726-60e0-42ee-afd0-67b893f1ef6d',
-  decode('22d41756890c07375be930e9ba9aac7c1a4cb884d0e02ec8afe91bc69834ee42', 'hex')
-)
+select p.id, decode('22d41756890c07375be930e9ba9aac7c1a4cb884d0e02ec8afe91bc69834ee42', 'hex')
+from public.projects p
+where p.id = 'f1857726-60e0-42ee-afd0-67b893f1ef6d'
 on conflict (project_id) do update set token_hash = excluded.token_hash, rotated_at = now();
 
 create or replace function public.get_agent_harness(p_project_id uuid, p_secret text)
