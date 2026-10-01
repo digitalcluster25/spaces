@@ -81,7 +81,7 @@ docker run --rm --network spaces-stage_default -e PGSSLMODE=disable -e DB_URL="$
 rm -rf "$mig"
 
 # 4. Build as nobody in a throwaway container; only public values in the environment.
-docker run --rm --user 65534:65534 --memory 2g --cpus 1.5 -e HOME=/tmp -e CI=1 \
+docker run --rm --user 65534:65534 --memory 2g --cpus 1.5 -e HOME=/tmp -e CI=1 -e SPACES_GIT_REVISION="${remote:0:12}" \
   -e VITE_SUPABASE_URL=https://stage-supabase.spaces.community -e VITE_SUPABASE_ANON_KEY="$anon" \
   -v "$base/build:/app" -w /app node:22-alpine \
   sh -c "npm ci --no-audit --no-fund && npm run build" >> "$log" 2>&1 || fail "build"
