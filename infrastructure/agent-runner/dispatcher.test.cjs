@@ -81,3 +81,17 @@ test("preview wait matches the pushed revision and reports failures", async () =
   assert.equal(runner.STAGE_BRANCH, "stage");
   assert.ok(!runner.BRANCH_PATTERN.test(runner.STAGE_BRANCH));
 });
+
+test("old run directories are removed, recent and foreign ones are kept", () => {
+  const fs = require("node:fs");
+  const os = require("node:os");
+  const path = require("node:path");
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "runs-"));
+  for (const name of ["spc-1-100", "spc-2-200", "keep-me"]) fs.mkdirSync(path.join(root, name));
+  const old = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000);
+  fs.utimesSync(path.join(root, "spc-1-100"), old, old);
+  fs.utimesSync(path.join(root, "keep-me"), old, old);
+  assert.equal(runner.cleanupOldRuns(root), 1);
+  assert.deepEqual(fs.readdirSync(root).sort(), ["keep-me", "spc-2-200"]);
+  fs.rmSync(root, { recursive: true, force: true });
+});

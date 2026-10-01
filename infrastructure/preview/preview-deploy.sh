@@ -36,7 +36,8 @@ if ! git -C "$base/repo" fetch -q origin stage 2>/dev/null; then
 fi
 remote="$(git -C "$base/repo" rev-parse FETCH_HEAD)"
 deployed="$(cat "$base/deployed-revision" 2>/dev/null || true)"
-[ "$remote" = "$deployed" ] && exit 0
+# --force: rebuild the current revision (e.g. after a server-side failure).
+[ "$remote" = "$deployed" ] && [ "${1:-}" != "--force" ] && exit 0
 
 log="$base/last-deploy.log"
 : > "$log"
@@ -79,6 +80,34 @@ docker run --rm --network spaces-stage_default -e PGSSLMODE=disable -e DB_URL="$
   -v "$mig/supabase:/w/supabase" -w /w node:22-alpine \
   sh -c "npx -y $supabase_cli db push --db-url \"\$DB_URL\" --yes" >> "$log" 2>&1 || { rm -rf "$mig"; fail "migrations"; }
 rm -rf "$mig"
+
+# 3b. Test access. Sign-up requires a referral reservation (hook_require_referral_signup).
+# A seed user without a password (it cannot sign in) is the referrer for the emails
+# listed in $base/testers (root-only, one per line); testers register on the preview themselves.
+if [ -s "$base/testers" ]; then
+  psql_stage() { docker exec -i spaces-stage-db psql -U postgres -v ON_ERROR_STOP=1 -tA "$@"; }
+  psql_stage >> "$log" 2>&1 <<'EOF' || fail "seed user"
+insert into auth.users (instance_id, id, aud, role, email, raw_app_meta_data, raw_user_meta_data,
+  created_at, updated_at, confirmation_token, recovery_token, email_change_token_new, email_change,
+  email_change_token_current, phone_change, phone_change_token, reauthentication_token)
+select '00000000-0000-0000-0000-000000000000', gen_random_uuid(), 'authenticated', 'authenticated',
+  'staging-seed@spaces.community', '{"provider":"email","providers":["email"]}', '{"staging_seed":true}',
+  now(), now(), '', '', '', '', '', '', '', ''
+where not exists (select 1 from auth.users where email = 'staging-seed@spaces.community');
+EOF
+  while read -r email; do
+    email="$(echo "$email" | tr 'A-Z' 'a-z' | tr -d '[:space:]')"
+    [[ "$email" =~ ^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$ ]] || continue
+    psql_stage >> "$log" 2>&1 <<EOF || fail "seed reservation"
+insert into public.referral_signup_reservations (email, referrer_user_id, source, expires_at)
+select '$email', u.id, 'referral_code', now() + interval '10 years'
+from auth.users u
+where u.email = 'staging-seed@spaces.community'
+  and not exists (select 1 from auth.users where email = '$email')
+on conflict (email) do nothing;
+EOF
+  done < "$base/testers"
+fi
 
 # 4. Build as nobody in a throwaway container; only public values in the environment.
 docker run --rm --user 65534:65534 --memory 2g --cpus 1.5 -e HOME=/tmp -e CI=1 -e SPACES_GIT_REVISION="${remote:0:12}" \

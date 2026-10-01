@@ -280,6 +280,7 @@ async function processTask(taskId, clients) {
   const runDir = path.join(config.workRoot, runId);
   const repoDir = path.join(runDir, "repo");
   log("start", runId);
+  cleanupOldRuns();
   await clients.setStatus(taskId, config.status.inProgress);
   await clients.comment(taskId, `Агент взял задачу в работу (запуск ${runId}). Ветка: ${branch}.`);
 
@@ -402,6 +403,20 @@ async function processTask(taskId, clients) {
   }
 }
 
+// Run directories are kept for inspection for 7 days.
+function cleanupOldRuns(root = config.workRoot, maxAgeMs = 7 * 24 * 60 * 60 * 1000, now = Date.now()) {
+  let removed = 0;
+  for (const name of fs.existsSync(root) ? fs.readdirSync(root) : []) {
+    if (!/^spc-\d+-\d+$/.test(name)) continue;
+    const dir = path.join(root, name);
+    if (now - fs.statSync(dir).mtimeMs > maxAgeMs) {
+      fs.rmSync(dir, { recursive: true, force: true });
+      removed += 1;
+    }
+  }
+  return removed;
+}
+
 // Waits until preview-deploy.sh on the host has published `sha` (or reported a failure for it).
 async function waitForPreview(sha, { fetchImpl = fetch, sleep = (ms) => new Promise((r) => setTimeout(r, ms)), minutes = config.previewMinutes, intervalMs = 20000 } = {}) {
   const deadline = Date.now() + minutes * 60 * 1000;
@@ -495,5 +510,5 @@ if (require.main === module) {
 
 module.exports = {
   blocksToText, textToBlocks, findSpecDocId, sensitiveFiles, parseAgentResult, buildPrompt, safeEqual,
-  createClients, createQueue, createServer, waitForPreview, ALLOWED_TOOLS, DISALLOWED_TOOLS, BRANCH_PATTERN, STAGE_BRANCH, config,
+  createClients, createQueue, createServer, waitForPreview, cleanupOldRuns, ALLOWED_TOOLS, DISALLOWED_TOOLS, BRANCH_PATTERN, STAGE_BRANCH, config,
 };
