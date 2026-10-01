@@ -70,6 +70,8 @@ const DISALLOWED_TOOLS = [
 // Changes here are flagged for the owner's attention in the review comment.
 const SENSITIVE_PATHS = [/^supabase\//, /^infrastructure\//, /^scripts\//, /^\.github\//, /^package(-lock)?\.json$/, /^AGENTS\.md$/, /^harness\//];
 const BRANCH_PATTERN = /^spc-\d+$/;
+const AGENT_NAME = "Spaces agent (Claude Code)";
+const AGENT_EMAIL = "agents@spaces.community";
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function log(...args) {
@@ -222,7 +224,10 @@ function createClients(fetchImpl = fetch) {
 function run(cmd, args, { cwd, asAgent = false, extraEnv = {}, timeoutMs = 15 * 60 * 1000, input } = {}) {
   return new Promise((resolve) => {
     const baseEnv = asAgent
-      ? { PATH: "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", HOME: config.agentHome, LANG: "C.UTF-8", CI: "1" }
+      ? {
+        PATH: "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", HOME: config.agentHome, LANG: "C.UTF-8", CI: "1",
+        GIT_AUTHOR_NAME: AGENT_NAME, GIT_AUTHOR_EMAIL: AGENT_EMAIL, GIT_COMMITTER_NAME: AGENT_NAME, GIT_COMMITTER_EMAIL: AGENT_EMAIL,
+      }
       : { ...process.env };
     const child = spawn(cmd, args, {
       cwd,
