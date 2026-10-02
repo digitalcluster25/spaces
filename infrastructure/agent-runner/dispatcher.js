@@ -61,6 +61,7 @@ const config = {
   releaseStatusFile: env.RELEASE_STATUS_FILE || "/run/release-status/status.json",
   productionUrl: (env.PRODUCTION_URL || "https://spaces.community").replace(/\/$/, ""),
   releaseMinutes: Number(env.RELEASE_MAX_MINUTES || 30),
+  healthFile: env.HEALTH_FILE || "/run/agent-health/status.json",
 };
 
 // Tools the agent may use. Anything not listed is denied without a prompt.
@@ -198,6 +199,7 @@ function createClients(fetchImpl = fetch) {
   const project = `/projects/${config.pacaProjectId}`;
   return {
     getTask: (id) => paca("GET", `${project}/tasks/${id}`),
+    getProject: () => paca("GET", project),
     setStatus: (id, statusId) => paca("PATCH", `${project}/tasks/${id}`, { status_id: statusId }),
     comment: (id, text) => paca("POST", `${project}/tasks/${id}/activities/comments`, { content: textToBlocks(text) }),
     async activities(id) {
@@ -697,6 +699,48 @@ function createServer({ queue }) {
   });
 }
 
+// --- Credential health (SPC-0022) ---------------------------------------------------------
+// Daily: are the runner's keys still accepted, and when do they expire (dates from env,
+// set when a key is issued)? The host monitor (infrastructure/operations/monitor.mjs) reads
+// the file and e-mails the owner through the existing Spaces Operations alerts.
+
+function evaluateCredentials(keys, now = Date.now(), warnDays = 30) {
+  const problems = [];
+  for (const [name, key] of Object.entries(keys)) {
+    if (key.valid === false) problems.push(`${name}: ключ отклонён`);
+    if (!key.expires) problems.push(`${name}: не указан срок действия`);
+    else {
+      const days = Math.floor((Date.parse(key.expires) - now) / 86400000);
+      if (Number.isNaN(days)) problems.push(`${name}: неверная дата срока`);
+      else if (days < 0) problems.push(`${name}: срок истёк ${key.expires}`);
+      else if (days <= warnDays) problems.push(`${name}: истекает ${key.expires} (через ${days} дн.)`);
+    }
+  }
+  return { status: problems.some((p) => /отклонён|истёк/.test(p)) ? "invalid" : problems.length ? "expiring" : "ok", problems };
+}
+
+async function checkCredentials(clients, { file = config.healthFile, now = Date.now() } = {}) {
+  const probe = async (fn) => {
+    try {
+      await fn();
+      return true;
+    } catch (error) {
+      return /→ (401|403)\b/.test(error.message) ? false : null; // null: unknown (network etc.)
+    }
+  };
+  const keys = {
+    paca: { valid: await probe(() => clients.getProject()), expires: env.PACA_KEY_EXPIRES || "" },
+    outline: { valid: await probe(() => clients.outline("documents.info", { id: env.OUTLINE_PROBE_DOC || "B3yhqvzNhk" })), expires: env.OUTLINE_KEY_EXPIRES || "" },
+    claude: { valid: null, expires: env.CLAUDE_TOKEN_EXPIRES || "" },
+  };
+  const result = { checked_at: new Date(now).toISOString(), keys, ...evaluateCredentials(keys, now) };
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(`${file}.tmp`, JSON.stringify(result, null, 2));
+  fs.renameSync(`${file}.tmp`, file);
+  log("credentials", result.status, result.problems.join("; "));
+  return result;
+}
+
 if (require.main === module) {
   for (const key of ["hookSecret", "pacaApiKey", "supabaseUrl", "supabaseAnonKey", "runnerSecret", "outlineApiKey", "claudeToken"]) {
     if (!config[key]) throw new Error(`Missing config: ${key}`);
@@ -704,10 +748,14 @@ if (require.main === module) {
   const clients = createClients();
   const queue = createQueue(clients);
   createServer({ queue }).listen(config.port, () => log(`agent runner on :${config.port}`));
+  const credentialCheck = () => checkCredentials(clients).catch((error) => log("credential check failed", error.message));
+  credentialCheck();
+  setInterval(credentialCheck, 24 * 60 * 60 * 1000).unref();
 }
 
 module.exports = {
   blocksToText, textToBlocks, findSpecDocId, sensitiveFiles, parseAgentResult, buildPrompt, safeEqual,
   createClients, createQueue, createServer, waitForPreview, cleanupOldRuns,
-  lastStatusChangeActor, waitForRelease, checkProduction, waitForProduction, databaseNote, ALLOWED_TOOLS, DISALLOWED_TOOLS, BRANCH_PATTERN, STAGE_BRANCH, config,
+  lastStatusChangeActor, waitForRelease, checkProduction, waitForProduction, databaseNote,
+  evaluateCredentials, checkCredentials, ALLOWED_TOOLS, DISALLOWED_TOOLS, BRANCH_PATTERN, STAGE_BRANCH, config,
 };

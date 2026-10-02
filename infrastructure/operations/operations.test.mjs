@@ -40,3 +40,12 @@ test("operational failures expose stable codes instead of secret-bearing message
   assert.equal(safeCode(new Error("Critical table extraction failed")), "critical_table_verification_failed");
   assert.equal(safeCode(new Error("request timeout with token secret")), "timeout");
 });
+
+test("agent runner key health becomes an incident when stale, expiring or rejected", async () => {
+  const { agentRunnerHealth } = await import("./monitor.mjs");
+  const now = Date.parse("2026-10-02T12:00:00Z");
+  assert.equal(agentRunnerHealth(null, now).status, "down");
+  assert.equal(agentRunnerHealth({ checked_at: "2026-10-02T06:00:00Z", status: "ok" }, now).status, "healthy");
+  assert.equal(agentRunnerHealth({ checked_at: "2026-09-30T06:00:00Z", status: "ok" }, now).details.code, "stale");
+  assert.equal(agentRunnerHealth({ checked_at: "2026-10-02T06:00:00Z", status: "expiring", problems: ["x"] }, now).status, "down");
+});

@@ -19,6 +19,8 @@ services:
       - /opt/spaces/agents/secrets:/run/agent-secrets:ro
       # SPC-0020: production deploy status written by scripts/deploy.sh
       - /opt/spaces/release-status:/run/release-status:ro
+      # SPC-0022: key health for the host monitor (no secrets in it)
+      - /opt/spaces/agents/health:/run/agent-health
     mem_limit: 4g
     cpus: 1.5
     pids_limit: 2048

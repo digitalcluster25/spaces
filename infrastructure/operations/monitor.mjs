@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { statfs } from "node:fs/promises";
+import { readFile, statfs } from "node:fs/promises";
 import { promisify } from "node:util";
 import { recordAudit, sendAlert, supabase } from "./common.mjs";
 
@@ -14,7 +14,7 @@ export const httpTargets = [
   ["openseo", "https://openseo.spaces.community/", [200]],
 ];
 
-export const containers = ["spaces-site", "spaces-provisioner", "spaces-billing", "spaces-data-plane", "spaces-mcp-gateway", "outline", "openseo"];
+export const containers = ["spaces-site", "spaces-provisioner", "spaces-billing", "spaces-data-plane", "spaces-mcp-gateway", "outline", "openseo", "spaces-agent-runner"];
 
 export function healthStatus(ok, latencyMs) {
   if (!ok) return "down";
@@ -86,12 +86,32 @@ async function storeCheck(check) {
   if ((check.status === "down" && failures === 2) || (changed && old?.status === "down" && check.status !== "down")) {
     const recovered = check.status !== "down";
     const sent = await sendAlert(recovered ? `Spaces recovered: ${check.service}` : `Spaces incident: ${check.service}`,
-      recovered ? `${check.service} is ${check.status} again.` : `${check.service} failed two consecutive health checks.`);
+      recovered ? `${check.service} is ${check.status} again.` : `${check.service} failed two consecutive health checks.\nDetails: ${JSON.stringify(check.details || {})}`);
     await recordAudit(recovered ? "operations.service.recovered" : "operations.service.down", "service", check.service, { status: check.status, alert_sent: sent });
     await supabase(`/rest/v1/operational_service_states?service=eq.${encodeURIComponent(check.service)}`, {
       method: "PATCH", headers: { prefer: "return=minimal" }, body: { last_alerted_at: new Date().toISOString() },
     });
   }
+}
+
+// SPC-0022: the agent runner writes its key health daily; expiring (≤30 days), rejected
+// or stale (>26 h) keys are an incident, so the owner gets the usual alert e-mail.
+export function agentRunnerHealth(health, now = Date.now()) {
+  if (!health || !health.checked_at) return { status: "down", details: { code: "no_health_file" } };
+  const ageHours = Math.round((now - Date.parse(health.checked_at)) / 3_600_000);
+  if (!(ageHours <= 26)) return { status: "down", details: { code: "stale", age_hours: ageHours } };
+  if (health.status !== "ok") return { status: "down", details: { code: health.status, problems: health.problems || [] } };
+  return { status: "healthy", details: { age_hours: ageHours } };
+}
+
+async function checkAgentRunner(file = "/opt/spaces/agents/health/status.json") {
+  let health = null;
+  try {
+    health = JSON.parse(await readFile(file, "utf8"));
+  } catch {
+    health = null;
+  }
+  return { service: "agent-runner-keys", latency_ms: null, ...agentRunnerHealth(health) };
 }
 
 export async function runMonitor() {
@@ -101,6 +121,7 @@ export async function runMonitor() {
     checkDatabase(),
     checkDisk(),
     checkBackup(),
+    checkAgentRunner(),
   ]);
   for (const check of checks) await storeCheck(check);
   console.log(JSON.stringify({ monitor: "ok", checks: checks.length, unhealthy: checks.filter((item) => item.status === "down").length }));

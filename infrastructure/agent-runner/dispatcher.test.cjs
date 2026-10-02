@@ -132,3 +132,12 @@ test("database note distinguishes 'nothing applied' from 'partially applied'", (
   assert.match(partial, /20261002000100/);
   assert.match(partial, /нужно решение владельца/);
 });
+
+test("credential health: rejected, expiring and missing expiry dates are reported", () => {
+  const now = Date.parse("2026-10-02T00:00:00Z");
+  assert.deepEqual(runner.evaluateCredentials({ a: { valid: true, expires: "2027-09-30" } }, now), { status: "ok", problems: [] });
+  assert.equal(runner.evaluateCredentials({ a: { valid: true, expires: "2026-10-20" } }, now).status, "expiring");
+  assert.equal(runner.evaluateCredentials({ a: { valid: null, expires: "" } }, now).status, "expiring");
+  assert.equal(runner.evaluateCredentials({ a: { valid: false, expires: "2027-09-30" } }, now).status, "invalid");
+  assert.equal(runner.evaluateCredentials({ a: { valid: true, expires: "2026-09-01" } }, now).status, "invalid");
+});
