@@ -110,7 +110,7 @@ test("acceptance: release status and production check", async () => {
   const sha = "b".repeat(40);
   const statuses = [null, { revision: "old", ok: true }, { revision: sha, ok: false, stage: "migrations", error: "exit 1", backup: "x.spcbak" }];
   const release = await runner.waitForRelease(sha, { read: () => statuses.shift(), sleep: async () => {} });
-  assert.deepEqual(release, { ok: false, stage: "migrations", error: "exit 1", backup: "x.spcbak" });
+  assert.deepEqual(release, { ok: false, stage: "migrations", error: "exit 1", backup: "x.spcbak", applied: [] });
   assert.equal((await runner.waitForRelease(sha, { read: () => null, sleep: async () => {}, minutes: 0 })).stage, "timeout");
 
   const site = (bundleText) => async (url) => {
@@ -123,4 +123,12 @@ test("acceptance: release status and production check", async () => {
   let calls = 0;
   const eventually = await runner.waitForProduction(sha, { check: async () => ({ ok: ++calls === 3, error: "x" }), sleep: async () => {} });
   assert.equal(eventually.ok, true);
+});
+
+test("database note distinguishes 'nothing applied' from 'partially applied'", () => {
+  assert.equal(runner.databaseNote({ backup: "" }), "");
+  assert.match(runner.databaseNote({ backup: "b.spcbak", applied: [] }), /не применились, база не изменилась/);
+  const partial = runner.databaseNote({ backup: "b.spcbak", applied: ["20261002000100"] });
+  assert.match(partial, /20261002000100/);
+  assert.match(partial, /нужно решение владельца/);
 });

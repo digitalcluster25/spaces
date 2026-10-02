@@ -452,10 +452,21 @@ async function waitForRelease(sha, { read = readReleaseStatus, sleep = (ms) => n
   const deadline = Date.now() + minutes * 60 * 1000;
   while (Date.now() < deadline) {
     const status = read();
-    if (status && status.revision === sha) return { ok: Boolean(status.ok), stage: status.stage || "", error: status.error || "", backup: status.backup || "" };
+    if (status && status.revision === sha) {
+      return { ok: Boolean(status.ok), stage: status.stage || "", error: status.error || "", backup: status.backup || "", applied: Array.isArray(status.applied) ? status.applied : [] };
+    }
     await sleep(intervalMs);
   }
-  return { ok: false, stage: "timeout", error: `деплой не завершился за ${minutes} мин`, backup: "" };
+  return { ok: false, stage: "timeout", error: `деплой не завершился за ${minutes} мин`, backup: "", applied: [] };
+}
+
+// What the owner needs to know about the database after a failed release.
+function databaseNote(release) {
+  if (!release || !release.backup) return "";
+  if (release.applied && release.applied.length) {
+    return `Миграции, применённые до сбоя: ${release.applied.join(", ")} — автооткат их не возвращает, нужно решение владельца. Резервная копия перед ними: ${release.backup}.`;
+  }
+  return `Миграции не применились, база не изменилась (резервная копия на всякий случай: ${release.backup}).`;
 }
 
 // Production answers and serves the bundle built from `sha` (vite defines the 12-char revision).
@@ -541,7 +552,7 @@ async function processAcceptance(task, clients) {
     await must("push main", run("git", [...GIT_SAFE, "push", config.pushUrl, "HEAD:refs/heads/main"], { cwd: pushDir, timeoutMs: 300000, extraEnv: sshEnv }));
     pushed = true;
     const release = await waitForRelease(merged);
-    if (!release.ok) throw Object.assign(new Error(`деплой не прошёл (этап ${release.stage}): ${release.error}`), { release });
+    if (!release.ok) throw Object.assign(new Error(`деплой не прошёл (этап ${release.stage}):\n${release.error}`), { release });
     const health = await waitForProduction(merged);
     if (!health.ok) throw Object.assign(new Error(`продакшен не прошёл проверку: ${health.error}`), { release });
 
@@ -554,6 +565,9 @@ async function processAcceptance(task, clients) {
     await checkpoint(clients, findSpecDocId(blocksToText(task.description)), `агент-раннер ${runId}: выкачено`, message);
     await clients.setStatus(taskId, config.status.done);
     log("released", runId);
+    // The task branch is fully in main now; remove it (never main/stage: BRANCH_PATTERN checked above).
+    const removed = await run("git", [...GIT_SAFE, "push", config.pushUrl, "--delete", `refs/heads/${branch}`], { cwd: pushDir, timeoutMs: 120000, extraEnv: sshEnv });
+    if (removed.code !== 0) log("branch delete failed", branch, tail(removed.stderr, 3));
   } catch (error) {
     log("accept failed", runId, error.message);
     let rollback = "";
@@ -563,7 +577,7 @@ async function processAcceptance(task, clients) {
     const message = [
       `Застрял при выкатке: ${error.message}`.slice(0, 3000),
       pushed ? rollback : "main не менялся, продакшен не затронут.",
-      error.release?.backup ? `Резервная копия базы перед миграциями: ${error.release.backup}. Схему базы автооткат не возвращает — нужно решение владельца.` : "",
+      databaseNote(error.release),
     ].filter(Boolean).join("\n");
     await clients.comment(taskId, message).catch((e) => log("comment failed", e.message));
     await checkpoint(clients, findSpecDocId(blocksToText(task.description)), `агент-раннер ${runId}: выкатка не удалась`, message).catch(() => {});
@@ -695,5 +709,5 @@ if (require.main === module) {
 module.exports = {
   blocksToText, textToBlocks, findSpecDocId, sensitiveFiles, parseAgentResult, buildPrompt, safeEqual,
   createClients, createQueue, createServer, waitForPreview, cleanupOldRuns,
-  lastStatusChangeActor, waitForRelease, checkProduction, waitForProduction, ALLOWED_TOOLS, DISALLOWED_TOOLS, BRANCH_PATTERN, STAGE_BRANCH, config,
+  lastStatusChangeActor, waitForRelease, checkProduction, waitForProduction, databaseNote, ALLOWED_TOOLS, DISALLOWED_TOOLS, BRANCH_PATTERN, STAGE_BRANCH, config,
 };

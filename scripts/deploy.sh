@@ -26,24 +26,27 @@ failed_file="/opt/spaces/failed-revision"
 install -d -m 0755 "$release_dir"
 release_stage="idle"
 release_backup=""
+release_error=""
+release_applied=""
 release_status() {
-  python3 - "$1" "$2" "$3" "$4" "$release_backup" > "$release_dir/status.json.tmp" <<'PY'
+  python3 - "$1" "$2" "$3" "$4" "$release_backup" "$release_applied" > "$release_dir/status.json.tmp" <<'PY'
 import json, sys, datetime
 print(json.dumps({"revision": sys.argv[1], "ok": sys.argv[2] == "true", "stage": sys.argv[3],
-                  "error": sys.argv[4][-2000:], "backup": sys.argv[5],
+                  "error": sys.argv[4][-2000:], "backup": sys.argv[5], "applied": sys.argv[6].split(),
                   "updated_at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}, ensure_ascii=False))
 PY
   mv "$release_dir/status.json.tmp" "$release_dir/status.json"
 }
 on_release_error() {
   local code=$?
+  local message="${release_error:-exit $code}"
   case "$release_stage" in
     idle|done) ;;
     backup|migrations)
       # Never retry a failed backup/migration every minute: wait for a new commit.
-      release_status "$remote" false "$release_stage" "exit $code"
+      release_status "$remote" false "$release_stage" "$message"
       printf '%s\n' "$remote" > "$failed_file" ;;
-    *) release_status "$remote" false "$release_stage" "exit $code" ;;
+    *) release_status "$remote" false "$release_stage" "$message" ;;
   esac
 }
 trap on_release_error ERR
@@ -65,7 +68,8 @@ h, p, user, db, pw = (env[k] for k in ("SUPABASE_DB_HOST", "SUPABASE_DB_PORT", "
 print(f"PGHOST={h}\nPGPORT={p}\nPGUSER={user}\nPGDATABASE={db}\nPGPASSWORD={pw}")
 print(f"DB_URL=postgresql://{u.quote(user, safe='')}:{u.quote(pw, safe='')}@{h}:{p}/{db}")
 PY
-  applied="$(docker run --rm --env-file "$envfile" postgres:17-alpine psql -tAc "select version from supabase_migrations.schema_migrations")"
+  applied_versions() { docker run --rm --env-file "$envfile" postgres:17-alpine psql -tAc "select version from supabase_migrations.schema_migrations"; }
+  applied="$(applied_versions)"
   pending=""
   for version in $(ls "$repo_dir/supabase/migrations" | sed 's/_.*//'); do
     grep -qx "$version" <<<"$applied" || pending="$pending $version"
@@ -75,11 +79,20 @@ PY
     systemctl start spaces-backup.service
     release_backup="$( (ls -t /opt/spaces/backups/*.spcbak 2>/dev/null || true) | head -1 | xargs -r basename)"
     release_stage="migrations"
-    local work
+    local work mlog
     work="$(mktemp -d)"
+    mlog="/opt/spaces/last-migrations.log"
     cp -r "$repo_dir/supabase" "$work/"
-    docker run --rm --env-file "$envfile" -v "$work/supabase:/w/supabase" -w /w node:22-alpine \
-      sh -c 'npx -y supabase@2.90.0 db push --db-url "$DB_URL" --yes'
+    if ! docker run --rm --env-file "$envfile" -v "$work/supabase:/w/supabase" -w /w node:22-alpine \
+      sh -c 'npx -y supabase@2.90.0 db push --db-url "$DB_URL" --yes' > "$mlog" 2>&1; then
+      # Report the database error and which of the pending migrations did get applied.
+      release_error="$(grep -vE 'new version of Supabase CLI|We recommend updating|npm (warn|notice)' "$mlog" | tail -n 25 || true)"
+      applied="$(applied_versions || true)"
+      for version in $pending; do grep -qx "$version" <<<"$applied" && release_applied="$release_applied $version"; done
+      rm -rf "$work" "$envfile"
+      return 1
+    fi
+    release_applied="$pending"
     rm -rf "$work"
   fi
   rm -f "$envfile"
