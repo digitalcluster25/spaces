@@ -4,11 +4,11 @@ const jwt = require("jsonwebtoken");
 const { Pool } = require("pg");
 const { createPanelPage, readSignedContext } = require("/spaces-shared/tenant-panel.js");
 const { createMemoryAdapter } = require("/spaces-sso/memory-adapter.js");
+const { ensureOutlineTeam, findTeamForProject } = require("/spaces-sso/team-resolver.js");
 
 const port = Number(process.env.PORT || 3000);
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
 const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
-const teamSubdomain = process.env.SPACES_OUTLINE_TEAM_SUBDOMAIN || "spaces";
 const serviceSecret = process.env.SPACES_SERVICE_SECRET;
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const handleMemory = createMemoryAdapter({ pool });
@@ -87,37 +87,6 @@ async function exchangeTicket(ticket) {
   return response.json();
 }
 
-function projectSubdomain(projectSlug, projectId) {
-  if (projectSlug === "commercial-projects") return teamSubdomain;
-  const slug = String(projectSlug || "project").replace(/[^a-z0-9-]/g, "-").slice(0, 70);
-  return `spaces-${slug}-${String(projectId).replace(/-/g, "").slice(0, 8)}`;
-}
-
-async function ensureOutlineTeam(client, project) {
-  const subdomain = projectSubdomain(project.slug, project.id);
-  const existing = await client.query(
-    'select id from teams where subdomain = $1 limit 1',
-    [subdomain],
-  );
-  if (existing.rowCount) {
-    await client.query(
-      'update teams set name = $1, "deletedAt" = null, "suspendedAt" = null, "updatedAt" = now(), "signupQueryParams" = coalesce("signupQueryParams", \'{}\'::jsonb) || $2::jsonb where id = $3',
-      [project.name, JSON.stringify({ spaces_project_id: project.id }), existing.rows[0].id],
-    );
-    return existing.rows[0].id;
-  }
-
-  const teamId = crypto.randomUUID();
-  await client.query(
-    `insert into teams
-      (id, name, "createdAt", "updatedAt", subdomain, sharing, "documentEmbeds", "guestSignin",
-       "defaultUserRole", "memberCollectionCreate", "inviteRequired", "memberTeamCreate", "passkeysEnabled", "signupQueryParams")
-     values ($1, $2, now(), now(), $3, true, true, false, 'member', true, false, true, false, $4::jsonb)`,
-    [teamId, project.name, subdomain, JSON.stringify({ spaces_project_id: project.id })],
-  );
-  return teamId;
-}
-
 async function findOrCreateOutlineUser(claims, providedTeamId) {
   const email = String(claims.email || "").toLowerCase();
   if (!email) throw new Error("Spaces user has no email");
@@ -183,9 +152,7 @@ async function provisionOutline(input) {
   const client = await pool.connect();
   try {
     await client.query("begin");
-    const subdomain = projectSubdomain(project.slug, project.id);
-    const team = await client.query('select id from teams where subdomain = $1 limit 1', [subdomain]);
-    let teamId = team.rows[0]?.id;
+    let teamId = (await findTeamForProject(client, project.id))?.id;
 
     if (["provision", "resume", "restore"].includes(input.operation)) {
       teamId = await ensureOutlineTeam(client, project);

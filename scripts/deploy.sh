@@ -154,11 +154,12 @@ systemctl enable --now spaces-monitor.timer spaces-backup.timer >/dev/null
 
 install -m 0755 scripts/deploy.sh /opt/spaces/bin/deploy.sh
 
-outline_hash="$(sha256sum infrastructure/outline-spaces-sso/server.js infrastructure/outline-spaces-sso/memory-adapter.js infrastructure/outline-spaces-sso/package.json infrastructure/outline-spaces-sso/docker-compose.override.yml infrastructure/outline-spaces-sso/nginx.conf infrastructure/outline-spaces-sso/spaces-shell.css infrastructure/outline-spaces-sso/spaces-shell.js infrastructure/shared/tenant-panel.js | sha256sum | cut -d' ' -f1)"
+outline_hash="$(sha256sum infrastructure/outline-spaces-sso/server.js infrastructure/outline-spaces-sso/memory-adapter.js infrastructure/outline-spaces-sso/team-resolver.js infrastructure/outline-spaces-sso/package.json infrastructure/outline-spaces-sso/docker-compose.override.yml infrastructure/outline-spaces-sso/nginx.conf infrastructure/outline-spaces-sso/spaces-shell.css infrastructure/outline-spaces-sso/spaces-shell.js infrastructure/shared/tenant-panel.js | sha256sum | cut -d' ' -f1)"
 if [ "$(cat /opt/outline/spaces-sso-revision 2>/dev/null || true)" != "$outline_hash" ]; then
   install -d -m 0755 /opt/outline/spaces-shell
   install -m 0644 infrastructure/outline-spaces-sso/server.js /opt/outline/spaces-sso/server.js
   install -m 0644 infrastructure/outline-spaces-sso/memory-adapter.js /opt/outline/spaces-sso/memory-adapter.js
+  install -m 0644 infrastructure/outline-spaces-sso/team-resolver.js /opt/outline/spaces-sso/team-resolver.js
   install -m 0644 infrastructure/outline-spaces-sso/package.json /opt/outline/spaces-sso/package.json
   install -m 0644 infrastructure/outline-spaces-sso/docker-compose.override.yml /opt/outline/docker-compose.override.yml
   install -m 0644 infrastructure/outline-spaces-sso/nginx.conf /opt/outline/spaces-shell/nginx.conf
